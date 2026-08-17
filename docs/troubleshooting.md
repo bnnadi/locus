@@ -1,49 +1,9 @@
 # Troubleshooting
 
-## Known open bugs
+## Remaining known issues
 
-These are found and unfixed as of the last review. They are listed first
-because several will bite on a first deploy and present as something else.
-
-### Ollama crash-loops as soon as you ask it to preload a model
-
-`services/ollama/entrypoint.sh` runs `ollama pull` before `ollama serve`. Pull
-is a client command that talks to the daemon over `OLLAMA_HOST`, so with no
-server running every pull fails to connect, and `set -e` exits the script on
-the first one. The container exits nonzero and retries until it gives up.
-
-It looks healthy while no models are configured, because the `if` guard skips
-the loop entirely — so this surfaces the first time the feature is used.
-
-Compounding: the variable it reads is `OLLAMA_MODELS`, which Ollama reserves
-for the *path to the models directory*. `config/env.example` uses
-`OLLAMA_PULL_MODELS` instead; the entrypoint has not been updated to match.
-
-**Fix:** background `ollama serve`, poll until it answers, pull, then wait on
-the server PID. Rename the variable to `OLLAMA_PULL_MODELS`.
-
-### `POST /traces` creates a duplicate strategy every time
-
-`strategy_id` is a hash of the LLM-generated title, and the Claude call sets no
-temperature. Identical input produces a different title, a different id, and a
-`MERGE` that inserts instead of matching. `success_count` never increments and
-the accumulated `success_rate` fragments across near-identical nodes.
-
-**Symptom you will actually see:** `tests/e2e/test_memory_loop_e2e.py` fails
-intermittently on the assertion that a second trace reinforces the same
-strategy. It looks like Qdrant lag; it is not.
-
-### `success_rate` in the API response is always 1.0 or 0.0
-
-`ingest_trace` returns the boolean `outcome == "success"` in the `success_rate`
-field and Pydantic coerces it. The correct value is computed in Cypher and
-written to Neo4j, but never read back. Query Neo4j directly for the real rate
-until this is fixed.
-
-### `min_success_rate=0.0` is silently ignored
-
-The retrieval filter guards with `if req.min_success_rate`, which is falsy at
-zero. Pass any nonzero threshold, or read the field from the returned strategy.
+These are found and unfixed. They will not block a first Compose boot, but
+they will bite under load or on Railway if ignored.
 
 ### Ollama port disagreement
 
@@ -51,12 +11,6 @@ zero. Pass any nonzero threshold, or read the field from the returned strategy.
 default `11434`. Anything pointed at `11434` will get connection-refused.
 `config/env.example` and `docker-compose.yml` both use `8080`; check any config
 that predates that.
-
-### Editing `services/ollama/entrypoint.sh` deploys without rebuilding
-
-`services/ollama/railway.json` sets `watchPatterns: ["Dockerfile"]`, so changes
-to the entrypoint are not a build trigger. You will deploy, see no error, and
-keep running the old script. Set it to `["**"]`.
 
 ## Deploys
 
@@ -85,7 +39,6 @@ keep running the old script. Set it to `["**"]`.
 | All credentials show as invalid after a deploy | `N8N_ENCRYPTION_KEY` unset, so a new key was generated | Set it explicitly. Credentials saved under a lost key are unrecoverable — re-enter them |
 | Every scheduled workflow fires twice | More than one replica in non-queue mode | Keep `numReplicas: 1`; n8n runs its scheduler in-process |
 | Healthcheck never passes | Checking `/healthz/readiness` while the database is unreachable | Correct behavior — readiness gates on a connected, migrated database. Fix the DB connection |
-| Container runs as root | `services/n8n/Dockerfile` ends on `USER root` | Add the intended install steps and switch back to `USER node`, or drop both lines |
 
 ## Hermes memory layer
 

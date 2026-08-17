@@ -27,6 +27,8 @@ from sentence_transformers import SentenceTransformer
 from anthropic import Anthropic
 import requests
 
+from identity import below_min_success_rate, strategy_id_for
+
 app = FastAPI(title="Hermes Memory Extraction Router")
 
 COLLECTION = "hermes_memory"
@@ -46,6 +48,9 @@ class ReasoningTraceIn(BaseModel):
     raw_reasoning: str
     outcome: str  # "success" | "failure" | "partial"
     backend: Optional[ExtractionBackend] = None  # override default
+    # Optional caller-owned key. When omitted, identity is derived from
+    # task_type + normalized raw_reasoning — never from model output.
+    strategy_key: Optional[str] = None
 
 
 class StrategyOut(BaseModel):
@@ -86,11 +91,6 @@ def ensure_collection():
         qdrant.create_payload_index(collection_name=COLLECTION, field_name="success_rate", field_schema="float")
 
 
-def strategy_id_from_title(title: str) -> str:
-    h = hashlib.sha256(title.strip().lower().encode()).hexdigest()[:16]
-    return f"strategy_{h}"
-
-
 # --- Extraction backends ---
 
 def extract_claude(trace: ReasoningTraceIn) -> dict:
@@ -107,6 +107,7 @@ Reply with JSON only, no preamble:
     resp = client.messages.create(
         model="claude-sonnet-5",
         max_tokens=500,
+        temperature=0,
         messages=[{"role": "user", "content": prompt}],
     )
     text = resp.content[0].text
@@ -125,7 +126,12 @@ Reasoning: {trace.raw_reasoning}
 """
     resp = requests.post(
         f"{os.environ['OLLAMA_URL']}/api/generate",
-        json={"model": "mistral", "prompt": prompt, "stream": False, "temperature": 0.2},
+        json={
+            "model": "mistral",
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0},
+        },
         timeout=60,
     )
     text = resp.json()["response"]
@@ -191,11 +197,15 @@ def ingest_trace(trace: ReasoningTraceIn):
             )
         raise HTTPException(status_code=502, detail=f"Extraction failed ({backend}): {e}")
 
-    strategy_id = strategy_id_from_title(extracted["title"])
+    strategy_id = strategy_id_for(
+        task_type=trace.task_type,
+        raw_reasoning=trace.raw_reasoning,
+        strategy_key=trace.strategy_key,
+    )
     success = trace.outcome == "success"
 
     with neo4j_driver.session() as session:
-        session.run(
+        record = session.run(
             """
             MERGE (s:StrategyItem {id: $id})
             ON CREATE SET
@@ -218,6 +228,7 @@ def ingest_trace(trace: ReasoningTraceIn):
             MATCH (rt:ReasoningTrace {id: $trace_id})
             MERGE (rt)-[:DERIVES_STRATEGY]->(s)
             SET rt.extraction_status = 'extracted', rt.extraction_backend = $backend
+            RETURN s.success_rate AS success_rate
             """,
             {
                 "id": strategy_id,
@@ -229,7 +240,8 @@ def ingest_trace(trace: ReasoningTraceIn):
                 "trace_id": trace.trace_id,
                 "backend": backend.value,
             },
-        )
+        ).single()
+        success_rate = float(record["success_rate"]) if record else (1.0 if success else 0.0)
 
     text_to_embed = f"{extracted['title']}. {extracted['description']}"
     vector = embedder.encode(text_to_embed).tolist()
@@ -265,7 +277,7 @@ def ingest_trace(trace: ReasoningTraceIn):
         description=extracted["description"],
         conditions=extracted.get("conditions", {}),
         steps=extracted.get("steps", []),
-        success_rate=success,
+        success_rate=success_rate,
     )
 
 
@@ -307,7 +319,7 @@ def retrieve_strategy(req: RetrieveIn):
             if not record:
                 continue
             strategy = record["strategy"]
-            if req.min_success_rate and strategy.get("success_rate", 0) < req.min_success_rate:
+            if below_min_success_rate(strategy.get("success_rate"), req.min_success_rate):
                 continue
 
             enriched.append(

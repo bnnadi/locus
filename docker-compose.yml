@@ -42,6 +42,11 @@ services:
     restart: unless-stopped
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
+      # The official image only consumes NEO4J_AUTH. The healthcheck talks to
+      # cypher-shell, which reads these two names, so they have to be present
+      # inside the container as well.
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
       NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX:-1G}
     volumes:
       - neo4j_data:/data
@@ -68,7 +73,13 @@ services:
     ports:
       - "127.0.0.1:${QDRANT_PORT:-6333}:6333"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      # The qdrant image does not ship curl or wget. bash and /dev/tcp are
+      # present on the debian-slim base, so the probe speaks HTTP itself.
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333; printf \"GET /readyz HTTP/1.0\\r\\n\\r\\n\" >&3; grep -q \"HTTP/1.[01] 200\" <&3'",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10

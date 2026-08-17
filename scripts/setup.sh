@@ -7,7 +7,8 @@
 #
 # What it does:
 #   1. Verifies the tools the other scripts assume are installed.
-#   2. Creates a local .env from config/env.example if one does not exist.
+#   2. Creates a local .env from config/env.example if one does not exist,
+#      then loads it so values filled into the file are visible to later steps.
 #   3. Creates one Postgres role and one database per consuming service.
 #   4. Runs pending migrations for every datastore.
 #
@@ -32,6 +33,39 @@ DB_CONSUMERS=(n8n)
 die() {
   echo "error: $*" >&2
   exit 1
+}
+
+# Load KEY=VALUE pairs from a dotenv file without overriding variables already
+# present in the environment, so `ADMIN_DATABASE_URL=... scripts/setup.sh` still
+# wins over a value sitting in .env.
+load_env_file() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 0
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    key="${line%%=*}"
+    value="${line#*=}"
+    [[ "$key" == "$line" ]] && continue
+    key="${key%"${key##*[![:space:]]}"}"
+    key="${key#"${key%%[![:space:]]*}"}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    if eval "[ -n \"\${${key}+x}\" ]"; then
+      continue
+    fi
+    case "$value" in
+      \"*\") value="${value#\"}"; value="${value%\"}" ;;
+      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    # printf -v writes the bytes as a literal. `export name=value` is an
+    # assignment word: $, backticks, and $$ in the value are expanded before
+    # the variable is set, so a password like pa$$word would not survive.
+    printf -v "$key" '%s' "$value"
+    # ${key?} is the name to export, not a request to export a variable called key.
+    export "${key?}"
+  done < "$env_file"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -73,6 +107,7 @@ else
   cp config/env.example .env
   echo "-- created .env from config/env.example (fill in real values; it is gitignored)"
 fi
+load_env_file .env
 
 # --- 3. Per-service roles and databases -----------------------------------
 

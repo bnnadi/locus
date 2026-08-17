@@ -114,10 +114,10 @@ on one instance — see the open questions below.
    Hermes Memory Layer on one Neo4j instance. Note that this graph has already
    had one index-versus-constraint name collision, which is exactly how a
    shared label bites.
-3. **Strategy identity.** `StrategyItem` ids are currently derived from
-   LLM-generated titles, which is nondeterministic and defeats the
-   reinforce-rather-than-duplicate behavior the layer depends on. Unresolved;
-   see `docs/troubleshooting.md`.
+3. **Strategy identity (resolved).** `StrategyItem` ids are derived from a
+   caller-supplied `strategy_key`, or from `task_type` + normalized
+   `raw_reasoning`. Model-generated titles are descriptive only and never
+   enter the hash.
 4. **Embedding model.** `all-MiniLM-L6-v2` (free, local, 384-dim) is the v0.1
    default. Changing it requires recreating the Qdrant collection, since stored
    vectors carry the old dimensionality.

@@ -41,7 +41,9 @@ def test_ingest_trace_success_outcome(trace_id):
     body = resp.json()
     assert body["strategy_id"].startswith("strategy_")
     assert body["title"]
-    assert 0.0 <= body["success_rate"] <= 1.0
+    # First success on a new strategy is 1.0, not a coerced boolean of this
+    # trace's outcome that happens to look like a rate.
+    assert body["success_rate"] == 1.0
 
 
 def test_ingest_trace_failure_outcome(trace_id):

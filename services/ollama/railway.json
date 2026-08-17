@@ -3,7 +3,7 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
-    "watchPatterns": ["Dockerfile"]
+    "watchPatterns": ["**"]
   },
   "deploy": {
     "restartPolicyType": "ON_FAILURE",

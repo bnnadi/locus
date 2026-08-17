@@ -32,7 +32,7 @@ services/        One directory per built service; each carries its Dockerfile
 scripts/         setup.sh, deploy.sh, migration.sh, plus maintenance/
 config/          env.example, railway.yml (reference only), Compose override
 migrations/      postgres/ and neo4j/, applied in filename order
-tests/           integration/ and e2e/, both requiring a live deployment
+tests/           unit/ (no live stack), plus integration/ and e2e/ against a deployment
 docs/            This directory
 ```
 

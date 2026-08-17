@@ -37,6 +37,9 @@ jobs:
           done < <(find scripts -name '*.sh')
           exit "$missing"
 
+      - name: load_env_file preserves literal dollars
+        run: bash tests/unit/test_load_env_file.sh
+
   compose:
     name: Compose config
     runs-on: ubuntu-latest
@@ -95,7 +98,10 @@ jobs:
           QDRANT_URL: http://localhost:6333
         run: python -c "import sys; sys.path.insert(0, 'services/hermes-memory-router'); import main; print(f'{len(main.app.routes)} routes')"
 
-      - name: Collect tests without running them
+      - name: Run unit tests
+        run: pytest tests/unit -v
+
+      - name: Collect remaining tests without running them
         run: pytest --collect-only -q tests/
 
   integration:

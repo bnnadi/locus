@@ -1,2 +1,1 @@
-FROM nousresearch/hermes-agent:latest
-USER root
+FROM n8nio/n8n:latest

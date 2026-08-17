@@ -49,6 +49,7 @@ services:
     # file is passed first), not to this file's location in config/.
     volumes:
       - ./services/hermes-memory-router/main.py:/app/main.py:ro
+      - ./services/hermes-memory-router/identity.py:/app/identity.py:ro
     command:
       - uvicorn
       - main:app
