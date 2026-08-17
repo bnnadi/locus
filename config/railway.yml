@@ -1,0 +1,117 @@
+# Locus Railway topology — reference manifest.
+#
+# IMPORTANT: Railway does not read this file. Railway's config-as-code is
+# per-service (services/<name>/railway.json, resolved from that service's
+# Root Directory setting). This file is the human-readable map of the intended
+# project: what runs, what it depends on, which variables it needs, and which
+# settings only exist in the dashboard.
+#
+# Keep it in sync by hand. When it disagrees with the dashboard, the dashboard
+# wins — so treat a mismatch found during an incident as a bug in this file.
+#
+# Dashboard-only settings, per service:
+#   - Root Directory (must be services/<name>, or railway.json is ignored)
+#   - Volume mounts (not expressible in railway.json)
+#   - Public domain (default to none; see the notes below)
+#   - Target port
+
+project: locus
+
+services:
+
+  postgres:
+    source: railway-template
+    notes: >-
+      Provisioned from Railway's Postgres template, not built from this repo.
+      One instance; scripts/setup.sh creates a role and database per consuming
+      service so no two services can read each other's tables.
+    volume:
+      mountPath: /var/lib/postgresql/data
+    publicDomain: false
+    consumers: [n8n]
+
+  neo4j:
+    source: railway-template
+    notes: >-
+      Shared with the Knowledge-Graph MCP. Resolve the CodePattern label
+      question in docs/deployment/hermes-memory-layer.md before treating one
+      instance as safe for both writers.
+    volume:
+      mountPath: /data
+    internalPort: 7687
+    publicDomain: false
+
+  qdrant:
+    source: services/qdrant
+    internalPort: 6333
+    volume:
+      mountPath: /qdrant/storage
+      sizeGB: 20
+    env:
+      - QDRANT__SERVICE__API_KEY
+      - QDRANT__SERVICE__ENABLE_TLS   # false; Railway terminates TLS at the edge
+    publicDomain: false
+
+  ollama:
+    source: services/ollama
+    internalPort: 8080
+    volume:
+      # Ollama's blob directory. Without this, every redeploy re-downloads
+      # multi-gigabyte weights.
+      mountPath: /root/.ollama
+      sizeGB: 50
+    env:
+      - OLLAMA_PULL_MODELS
+    publicDomain: false
+    notes: >-
+      Railway has no GPU, so this is CPU-only inference. Ollama ships no
+      authentication of any kind, so a public domain here is an open inference
+      endpoint on your bill — keep it internal.
+
+  n8n:
+    source: services/n8n
+    internalPort: 5678
+    volume:
+      mountPath: /home/node/.n8n
+      sizeGB: 5
+    env:
+      - DB_TYPE                 # postgresdb
+      - DB_POSTGRESDB_HOST
+      - DB_POSTGRESDB_PORT
+      - DB_POSTGRESDB_DATABASE
+      - DB_POSTGRESDB_USER
+      - DB_POSTGRESDB_PASSWORD
+      - N8N_ENCRYPTION_KEY      # see note
+      - N8N_PORT                # 5678; Railway's injected PORT is not read
+      - GENERIC_TIMEZONE
+    dependsOn: [postgres]
+    publicDomain: true
+    notes: >-
+      N8N_ENCRYPTION_KEY must be set before any credential is created. n8n
+      generates a fresh key when its data directory is empty, which silently
+      makes every previously stored credential undecryptable — and this happens
+      even with Postgres as the backend, because the key lives on disk.
+      Keep numReplicas at 1: in non-queue mode n8n runs its scheduler
+      in-process, so a second replica fires every trigger twice.
+
+  hermes-memory-router:
+    source: services/hermes-memory-router
+    internalPort: 8000
+    env:
+      - NEO4J_URI
+      - NEO4J_USER
+      - NEO4J_PASSWORD
+      - QDRANT_URL
+      - QDRANT_API_KEY
+      - EXTRACTION_BACKEND
+      - ANTHROPIC_API_KEY
+      - OLLAMA_URL
+      - HERMES_EXTRACT_ENDPOINT
+      - HERMES_TOKEN
+      - EMBEDDING_MODEL
+    dependsOn: [neo4j, qdrant]
+    publicDomain: false
+    notes: >-
+      POST /traces triggers a paid Anthropic call and the router has no
+      authentication, so a public domain makes it a metered endpoint open to
+      anyone. Hermes should reach it over the internal hostname.

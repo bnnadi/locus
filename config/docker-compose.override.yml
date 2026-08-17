@@ -1,0 +1,59 @@
+# Development overrides for the Locus stack.
+#
+# Not auto-discovered by Compose, because it does not sit beside the base
+# file. Pass it explicitly:
+#
+#   docker compose -f docker-compose.yml -f config/docker-compose.override.yml up -d
+#
+# Keep production-shaped settings out of this file. Anything here should be
+# something you would not want running on a deployed environment.
+
+services:
+  postgres:
+    # Fail fast in development instead of restarting behind your back.
+    restart: "no"
+    command:
+      - postgres
+      - -c
+      - log_statement=all
+      - -c
+      - log_min_duration_statement=0
+
+  neo4j:
+    restart: "no"
+    environment:
+      # Smaller heap so the whole stack fits on a laptop.
+      NEO4J_server_memory_heap_max__size: 512M
+
+  qdrant:
+    restart: "no"
+    environment:
+      QDRANT__LOG_LEVEL: DEBUG
+
+  ollama:
+    restart: "no"
+
+  n8n:
+    restart: "no"
+    environment:
+      N8N_LOG_LEVEL: debug
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      # Surfaces deprecation and permission warnings that are easy to miss.
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+
+  hermes-memory-router:
+    restart: "no"
+    # Bind-mount the source and reload on change, so router edits do not need
+    # an image rebuild. The base image's baked-in copy is shadowed by this.
+    # Path is relative to the project directory (the repo root, since the base
+    # file is passed first), not to this file's location in config/.
+    volumes:
+      - ./services/hermes-memory-router/main.py:/app/main.py:ro
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload

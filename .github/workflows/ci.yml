@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: |
+          # bash 3.2 ships on macOS, so avoid bash 4+ features in these scripts.
+          find scripts -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          find scripts -name '*.sh' -print0 | xargs -0 shellcheck --severity=warning
+
+      - name: Scripts are executable
+        run: |
+          missing=0
+          while IFS= read -r f; do
+            if [[ ! -x "$f" ]]; then
+              echo "not executable: $f"
+              missing=1
+            fi
+          done < <(find scripts -name '*.sh')
+          exit "$missing"
+
+  compose:
+    name: Compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate base and override render together
+        env:
+          # docker-compose.yml uses `:?` for values that must never be
+          # defaulted. CI supplies throwaway ones purely to render the config.
+          POSTGRES_PASSWORD: ci-not-a-real-password
+          NEO4J_PASSWORD: ci-not-a-real-password
+          N8N_DB_PASSWORD: ci-not-a-real-password
+          N8N_ENCRYPTION_KEY: ci-not-a-real-key
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f config/docker-compose.override.yml \
+            config --quiet
+
+      - name: Base file is valid on its own
+        env:
+          POSTGRES_PASSWORD: ci-not-a-real-password
+          NEO4J_PASSWORD: ci-not-a-real-password
+          N8N_DB_PASSWORD: ci-not-a-real-password
+          N8N_ENCRYPTION_KEY: ci-not-a-real-key
+        run: docker compose -f docker-compose.yml config --quiet
+
+  python:
+    name: Router lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r services/hermes-memory-router/requirements.txt
+          pip install ruff pytest
+
+      - name: Lint
+        run: ruff check services/hermes-memory-router tests
+
+      - name: Import the app
+        env:
+          # main.py builds its clients at import time, so importing it requires
+          # every connection variable to be present. Nothing is contacted
+          # eagerly, so unreachable addresses are fine here.
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: ci-not-a-real-password
+          QDRANT_URL: http://localhost:6333
+        run: python -c "import sys; sys.path.insert(0, 'services/hermes-memory-router'); import main; print(f'{len(main.app.routes)} routes')"
+
+      - name: Collect tests without running them
+        run: pytest --collect-only -q tests/
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: [python]
+    # Requires a reachable staging router with live Neo4j and Qdrant, and a
+    # funded Anthropic key, since POST /traces performs a real extraction.
+    # Configure the repository variable to enable this job.
+    if: vars.HERMES_MEMORY_ROUTER_URL != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest requests
+
+      - name: Run integration tests
+        env:
+          HERMES_MEMORY_ROUTER_URL: ${{ vars.HERMES_MEMORY_ROUTER_URL }}
+        run: pytest tests/integration -v
