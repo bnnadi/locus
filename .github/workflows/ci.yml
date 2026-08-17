@@ -20,6 +20,7 @@ jobs:
         run: |
           # bash 3.2 ships on macOS, so avoid bash 4+ features in these scripts.
           find scripts -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          find services -name 'entrypoint.sh' -print0 | xargs -0 -n1 sh -n
 
       - name: shellcheck
         run: |
@@ -67,6 +68,9 @@ jobs:
           N8N_DB_PASSWORD: ci-not-a-real-password
           N8N_ENCRYPTION_KEY: ci-not-a-real-key
         run: docker compose -f docker-compose.yml config --quiet
+
+      - name: n8n entrypoint chowns a root-owned volume
+        run: bash tests/unit/test_n8n_volume_permissions.sh
 
   python:
     name: Router lint and build
