@@ -24,7 +24,7 @@ SKIP_MIGRATIONS=false
 
 # Services built from this repo, in dependency order. Postgres and Neo4j are
 # provisioned from Railway templates and are not built here.
-SERVICES=(qdrant ollama n8n hermes-memory-router)
+SERVICES=(qdrant ollama n8n hermes hermes-memory-router)
 
 die() {
   echo "error: $*" >&2
@@ -51,6 +51,7 @@ base_url_for() {
     hermes-memory-router) echo "${HERMES_MEMORY_ROUTER_URL:-}" ;;
     ollama)               echo "${OLLAMA_URL:-}" ;;
     qdrant)               echo "${QDRANT_URL:-}" ;;
+    hermes)               echo "${HERMES_URL:-}" ;;
     *)                    echo "" ;;
   esac
 }

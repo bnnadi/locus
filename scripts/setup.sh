@@ -38,10 +38,17 @@ die() {
 # Load KEY=VALUE pairs from a dotenv file without overriding variables already
 # present in the environment, so `ADMIN_DATABASE_URL=... scripts/setup.sh` still
 # wins over a value sitting in .env.
+#
+# Values are stored literally: $, $$, backticks, and $(...) are not expanded,
+# so a password like pa$$word survives. The one exception is a value that is
+# exactly $(openssl rand -hex N) — that is the documented generator for
+# API_SERVER_KEY, not a general command substitution. The hex is written back
+# over the generator so the next run does not rotate the secret.
 load_env_file() {
   local env_file="$1"
   [[ -f "$env_file" ]] || return 0
-  local line key value
+  local line key value nbytes generated
+  local generated_keys=() generated_values=()
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%$'\r'}"
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -59,6 +66,20 @@ load_env_file() {
       \"*\") value="${value#\"}"; value="${value%\"}" ;;
       \'*\') value="${value#\'}"; value="${value%\'}" ;;
     esac
+    if [[ "$value" =~ ^\$\(openssl[[:space:]]+rand[[:space:]]+-hex[[:space:]]+([0-9]+)\)$ ]]; then
+      nbytes="${BASH_REMATCH[1]}"
+      command -v openssl >/dev/null 2>&1 || {
+        echo "error: openssl is required to expand ${key}" >&2
+        return 1
+      }
+      generated="$(openssl rand -hex "$nbytes")" || {
+        echo "error: openssl rand failed for ${key}" >&2
+        return 1
+      }
+      value="$generated"
+      generated_keys+=("$key")
+      generated_values+=("$value")
+    fi
     # printf -v writes the bytes as a literal. `export name=value` is an
     # assignment word: $, backticks, and $$ in the value are expanded before
     # the variable is set, so a password like pa$$word would not survive.
@@ -66,6 +87,25 @@ load_env_file() {
     # ${key?} is the name to export, not a request to export a variable called key.
     export "${key?}"
   done < "$env_file"
+
+  local i tmp persist_key persist_val persist_line
+  i=0
+  if [[ ${#generated_keys[@]} -gt 0 ]]; then
+    for persist_key in "${generated_keys[@]}"; do
+      persist_val="${generated_values[$i]}"
+      i=$((i + 1))
+      tmp="$(mktemp)"
+      while IFS= read -r persist_line || [[ -n "$persist_line" ]]; do
+        persist_line="${persist_line%$'\r'}"
+        if [[ "$persist_line" == "${persist_key}="* ]]; then
+          printf '%s=%s\n' "$persist_key" "$persist_val"
+        else
+          printf '%s\n' "$persist_line"
+        fi
+      done < "$env_file" > "$tmp"
+      mv "$tmp" "$env_file"
+    done
+  fi
 }
 
 while [[ $# -gt 0 ]]; do

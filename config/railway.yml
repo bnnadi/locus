@@ -115,3 +115,27 @@ services:
       POST /traces triggers a paid Anthropic call and the router has no
       authentication, so a public domain makes it a metered endpoint open to
       anyone. Hermes should reach it over the internal hostname.
+
+  hermes:
+    source: services/hermes
+    internalPort: 9119
+    volume:
+      mountPath: /opt/data
+    dependsOn: [hermes-memory-router]
+    publicDomain: true
+    env:
+      - API_SERVER_ENABLED
+      - API_SERVER_HOST
+      - API_SERVER_PORT
+      - API_SERVER_KEY
+      - HERMES_DASHBOARD
+      - HERMES_DASHBOARD_HOST
+      - HERMES_DASHBOARD_PORT
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD
+      - HERMES_DASHBOARD_BASIC_AUTH_SECRET
+    notes: >-
+      Dashboard on 9119 is the public surface. The official image fails
+      closed on a non-loopback bind unless basic-auth, OAuth, or OIDC is
+      set; HERMES_DASHBOARD_INSECURE is a no-op. The OpenAI API on 8642
+      stays internal. Attach a volume at /opt/data. Keep numReplicas at 1.

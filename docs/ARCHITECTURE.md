@@ -13,12 +13,14 @@ infrastructure, not an application — nothing here owns product logic.
 | `qdrant` | Vector index for semantic recall | `services/qdrant` | No |
 | `ollama` | Local LLM inference | `services/ollama` | No |
 | `n8n` | Workflow orchestration across MCP services | `services/n8n` | Yes |
+| `hermes` | Hermes Agent gateway + dashboard | `services/hermes` | Yes (dashboard) |
 | `hermes-memory-router` | Bridges Hermes to Neo4j + Qdrant | `services/hermes-memory-router` | No |
 
-Only `n8n` is intended to have a public domain. Everything else is reachable
-on the internal network exclusively — `ollama` and `hermes-memory-router` both
-ship without authentication, and the router spends money per request, so a
-public domain on either is a standing liability rather than a convenience.
+`n8n` and the Hermes dashboard are the public surfaces. Hermes on a public
+domain requires a dashboard auth provider (basic-auth, OAuth, or OIDC) —
+the image fails closed without one. Everything else is internal: `ollama`
+and `hermes-memory-router` ship without authentication, and the router
+spends money per request. The Hermes OpenAI API (8642) stays internal.
 
 ## Deployment model
 

@@ -47,7 +47,8 @@ code:
   Postgres as the backend does not protect you — the key lives on disk.
 - **Keep `ollama` and `hermes-memory-router` off public domains.** Neither has
   authentication, and `POST /traces` on the router spends Anthropic credit per
-  call.
+  call. The Hermes dashboard is public and must have basic-auth (or OAuth/OIDC)
+  set before the first deploy; the API on 8642 stays internal.
 
 See [troubleshooting.md](troubleshooting.md) for the current list of known
 bugs, several of which will bite on a first deploy.

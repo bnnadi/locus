@@ -45,4 +45,33 @@ check QUOTED 'keep $HOME and $$'
 if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
+
+cat > "$dir/.env.gen" <<'ENV'
+API_SERVER_KEY="$(openssl rand -hex 32)"
+STILL_LITERAL=pre$(echo pwned)post
+ENV
+
+unset API_SERVER_KEY STILL_LITERAL || true
+load_env_file "$dir/.env.gen"
+
+if [[ ! "$API_SERVER_KEY" =~ ^[0-9a-f]{64}$ ]]; then
+  printf 'FAIL API_SERVER_KEY: expected 64 hex chars, got [%s]\n' "$API_SERVER_KEY" >&2
+  exit 1
+fi
+check STILL_LITERAL 'pre$(echo pwned)post'
+
+# Generator must be replaced in the file so a second load does not rotate.
+second="$API_SERVER_KEY"
+unset API_SERVER_KEY || true
+load_env_file "$dir/.env.gen"
+if [[ "$API_SERVER_KEY" != "$second" ]]; then
+  printf 'FAIL API_SERVER_KEY rotated on second load\n' >&2
+  exit 1
+fi
+if grep -q 'openssl' "$dir/.env.gen"; then
+  printf 'FAIL generator left in file after expansion\n' >&2
+  exit 1
+fi
+
 echo "load_env_file preserves literal \$, \$\$, backticks, and command substitutions"
+echo "load_env_file expands only \$(openssl rand -hex N) and persists it"
