@@ -8,7 +8,7 @@
   "deploy": {
     "numReplicas": 1,
     "healthcheckPath": "/healthz/readiness",
-    "healthcheckTimeout": 300,
+    "healthcheckTimeout": 600,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

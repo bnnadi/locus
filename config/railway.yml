@@ -82,7 +82,8 @@ services:
       - DB_POSTGRESDB_USER
       - DB_POSTGRESDB_PASSWORD
       - N8N_ENCRYPTION_KEY      # see note
-      - N8N_PORT                # 5678; Railway's injected PORT is not read
+      - N8N_PORT                # 5678; must equal PORT and the target port
+      - PORT                    # 5678; Railway probes this. Pin it; do not leave the injected default if it is not 5678
       - GENERIC_TIMEZONE
     dependsOn: [postgres]
     publicDomain: true
@@ -93,6 +94,12 @@ services:
       even with Postgres as the backend, because the key lives on disk.
       Keep numReplicas at 1: in non-queue mode n8n runs its scheduler
       in-process, so a second replica fires every trigger twice.
+      Railway probes PORT, not N8N_PORT. The image copies PORT onto
+      N8N_PORT only when N8N_PORT is unset, and refuses to start if
+      they differ. Set PORT=5678 so it matches N8N_PORT and the
+      dashboard target port. healthcheckTimeout is 600s so first-boot
+      /healthz/readiness 503s (migrations + fullyReady) do not exhaust
+      the window. Do not switch the probe to /healthz.
 
   hermes-memory-router:
     source: services/hermes-memory-router

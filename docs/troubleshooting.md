@@ -39,6 +39,7 @@ that predates that.
 | All credentials show as invalid after a deploy | `N8N_ENCRYPTION_KEY` unset, so a new key was generated | Set it explicitly. Credentials saved under a lost key are unrecoverable — re-enter them |
 | Every scheduled workflow fires twice | More than one replica in non-queue mode | Keep `numReplicas: 1`; n8n runs its scheduler in-process |
 | Healthcheck never passes | Checking `/healthz/readiness` while the database is unreachable | Correct behavior — readiness gates on a connected, migrated database. Fix the DB connection |
+| n8n logs the editor URL, Railway healthcheck stays `service unavailable` until timeout | Railway probes `PORT`; n8n listens on `N8N_PORT`. If they differ the process now refuses to start. A 503 on the correct port during migrations/`fullyReady` can also look like this | Set dashboard `PORT=5678` to match `N8N_PORT` and the target port. `healthcheckTimeout` is 600s for first-boot readiness 503s. Do not switch the probe to `/healthz` |
 | `EACCES: permission denied, open '/home/node/.n8n/config'` | Volume is root-owned; n8n runs as `node` (uid 1000) | Expected until the image entrypoint chowns the mount. Redeploy n8n from a build that includes `services/n8n/entrypoint.sh`. Do not set `USER root` as the running user |
 
 ## Hermes memory layer

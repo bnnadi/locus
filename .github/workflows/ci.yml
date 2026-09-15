@@ -41,6 +41,12 @@ jobs:
       - name: load_env_file preserves literal dollars
         run: bash tests/unit/test_load_env_file.sh
 
+      - name: ollama pull list accepts JSON arrays
+        run: bash tests/unit/test_ollama_pull_models.sh
+
+      - name: n8n aligns PORT and N8N_PORT
+        run: bash tests/unit/test_n8n_port_align.sh
+
   compose:
     name: Compose config
     runs-on: ubuntu-latest
@@ -71,6 +77,9 @@ jobs:
 
       - name: n8n entrypoint chowns a root-owned volume
         run: bash tests/unit/test_n8n_volume_permissions.sh
+
+      - name: n8n PORT alignment survives su node
+        run: bash tests/unit/test_n8n_port_align_su.sh
 
   python:
     name: Router lint and build
