@@ -10,7 +10,9 @@
 # wins — so treat a mismatch found during an incident as a bug in this file.
 #
 # Dashboard-only settings, per service:
-#   - Root Directory (must be services/<name>, or railway.json is ignored)
+#   - Root Directory (services/<name>, except authentik →
+#     services/authentik/server and authentik-worker →
+#     services/authentik/worker; otherwise railway.json is ignored)
 #   - Volume mounts (not expressible in railway.json)
 #   - Public domain (default to none; see the notes below)
 #   - Target port
@@ -28,7 +30,7 @@ services:
     volume:
       mountPath: /var/lib/postgresql/data
     publicDomain: false
-    consumers: [n8n]
+    consumers: [n8n, authentik]
 
   neo4j:
     source: railway-template
@@ -144,5 +146,75 @@ services:
     notes: >-
       Dashboard on 9119 is the public surface. The official image fails
       closed on a non-loopback bind unless basic-auth, OAuth, or OIDC is
-      set; HERMES_DASHBOARD_INSECURE is a no-op. The OpenAI API on 8642
+      set; HERMES_DASHBOARD_INSECURE is a no-op.       The OpenAI API on 8642
       stays internal. Attach a volume at /opt/data. Keep numReplicas at 1.
+
+  authentik:
+    source: services/authentik/server
+    internalPort: 9000
+    dependsOn: [postgres]
+    publicDomain: true
+    env:
+      - AUTHENTIK_SECRET_KEY
+      - AUTHENTIK_POSTGRESQL__HOST
+      - AUTHENTIK_POSTGRESQL__PORT
+      - AUTHENTIK_POSTGRESQL__NAME
+      - AUTHENTIK_POSTGRESQL__USER
+      - AUTHENTIK_POSTGRESQL__PASSWORD
+      - AUTHENTIK_ERROR_REPORTING__ENABLED
+      - AUTHENTIK_BOOTSTRAP_PASSWORD
+      - AUTHENTIK_BOOTSTRAP_EMAIL
+      - AUTHENTIK_BOOTSTRAP_TOKEN
+    notes: >-
+      OSS server. Dashboard Root Directory must be
+      services/authentik/server. Public domain is required for login,
+      OIDC, and JWKS. Do not attach it until bootstrap password, email,
+      and token are set on this service AND authentik-worker —
+      otherwise /if/flow/initial-setup/ is an internet race for the IdP
+      Uzora will trust. Paste generated hex for secrets, not the
+      env.example openssl generator. Pin PORT=9000. Do not attach a
+      /data volume. OIDC state is in Postgres. healthcheckPath is
+      /-/health/ready/. Keep numReplicas at 1. Create the OIDC app
+      after first boot, then set AUTHENTIK_ISSUER on Uzora. Same
+      AUTHENTIK_SECRET_KEY and AUTHENTIK_POSTGRESQL__* as the worker
+      (one database, two processes).
+
+  authentik-worker:
+    source: services/authentik/worker
+    dependsOn: [postgres, authentik]
+    publicDomain: false
+    env:
+      - AUTHENTIK_SECRET_KEY
+      - AUTHENTIK_POSTGRESQL__HOST
+      - AUTHENTIK_POSTGRESQL__PORT
+      - AUTHENTIK_POSTGRESQL__NAME
+      - AUTHENTIK_POSTGRESQL__USER
+      - AUTHENTIK_POSTGRESQL__PASSWORD
+      - AUTHENTIK_ERROR_REPORTING__ENABLED
+      - AUTHENTIK_BOOTSTRAP_PASSWORD
+      - AUTHENTIK_BOOTSTRAP_EMAIL
+      - AUTHENTIK_BOOTSTRAP_TOKEN
+    notes: >-
+      Same image pin as authentik, CMD worker. Dashboard Root Directory
+      must be services/authentik/worker. Do not clone the server
+      service — that copies the HTTP health probe. Create an empty
+      service. No public domain. No healthcheckPath. No /data volume.
+      Bootstrap vars belong here (official automated install). Keep
+      numReplicas at 1. Shares the authentik Postgres role; do not add
+      authentik-worker to setup.sh DB_CONSUMERS.
+
+  uzora:
+    source: services/uzora
+    internalPort: 8100
+    dependsOn: [authentik]
+    publicDomain: false
+    env:
+      - AUTHENTIK_URL
+      - AUTHENTIK_ISSUER
+      - AUTHENTIK_AUDIENCE
+    notes: >-
+      Token gate, not an MCP proxy. /mcp is 501. Keep off a public
+      domain. AUTHENTIK_URL must be the in-network origin
+      (http://authentik.railway.internal:9000), not the public
+      hostname. ISSUER/AUDIENCE stay empty until the OIDC app exists;
+      /health still works. Pin PORT=8100. Keep numReplicas at 1.
