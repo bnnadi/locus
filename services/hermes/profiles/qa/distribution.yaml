@@ -1,0 +1,7 @@
+name: locus-shadow-qa
+version: 0.1.0
+description: >-
+  QA lane. Runs the suite against the engineer's work, audits the diff, and
+  reports a verdict. Strictly read-only: cannot edit, commit, or push.
+author: locus
+license: MIT

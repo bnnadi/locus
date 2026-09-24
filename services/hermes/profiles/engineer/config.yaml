@@ -1,0 +1,35 @@
+# Engineer lane. This profile is a lifecycle shim, not a coder: it reads the
+# card, invokes its OpenCode agent, verifies, and closes the run. OpenCode does
+# the thinking, so the model here can be cheap.
+
+toolsets:
+  - terminal
+  - memory
+
+agent:
+  disabled_toolsets:
+    - delegation
+    - browser
+    - web
+    - code_execution
+    # NEVER add `kanban` to this list. Workers do not carry the kanban toolset
+    # in the allowlist above — the dispatcher injects it at spawn time via
+    # HERMES_KANBAN_TASK. But disabled_toolsets is applied last and wins over
+    # everything, including that injection. Listing it here would strip
+    # kanban_complete from the worker, and every run would then be reaped as a
+    # protocol violation.
+
+terminal:
+  backend: local
+  # This is the binding that makes the OpenCode permission split real. With
+  # home_mode: profile, tool subprocesses get HOME={HERMES_HOME}/home, so this
+  # lane sees only its own ~/.config/opencode and only the `engineer` agent
+  # exists in its roster. Without it, any lane could run any agent and pick up
+  # its permissions.
+  home_mode: profile
+  # cwd is intentionally unset. The dispatcher spawns the worker inside the
+  # card's pinned workspace and exports HERMES_KANBAN_WORKSPACE; pinning a path
+  # here would fight it.
+
+delegation:
+  orchestrator_enabled: false

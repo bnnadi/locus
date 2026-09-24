@@ -1,0 +1,8 @@
+name: locus-shadow-spec
+version: 0.1.0
+description: >-
+  Spec lane. Briefs the OpenCode `spec` agent to write the failing test that
+  defines the change, before any implementation exists. Cannot write anything
+  outside test files.
+author: locus
+license: MIT

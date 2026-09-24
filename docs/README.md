@@ -6,6 +6,9 @@
 | [troubleshooting.md](troubleshooting.md) | Known issues and symptom-to-cause tables across the stack |
 | [deployment/hermes-memory-layer.md](deployment/hermes-memory-layer.md) | Deploy guide for Qdrant + `hermes-memory-router` |
 | [runbooks/hermes-memory-runbook.md](runbooks/hermes-memory-runbook.md) | Day-to-day operations for the memory layer |
+| [../services/hermes/README.md](../services/hermes/README.md) | Hermes gateway and shadow-team profiles (`researcher`, `spec`, `engineer`, `qa`) |
+| [../services/authentik/README.md](../services/authentik/README.md) | Authentik IdP: nested `server/` and `worker/` Railway roots |
+| [../services/uzora/README.md](../services/uzora/README.md) | Uzora token gate (JWT validation; `/mcp` is 501) |
 
 ## Getting started
 
@@ -28,7 +31,7 @@ already been applied.
 
 ```
 services/        One directory per built service; each carries its Dockerfile
-                 and, for Railway, its railway.json
+                 and railway.json. Authentik nests server/ and worker/
 scripts/         setup.sh, deploy.sh, migration.sh, plus maintenance/
 config/          env.example, railway.yml (reference only), Compose override
 migrations/      postgres/ and neo4j/, applied in filename order
@@ -49,6 +52,13 @@ code:
   authentication, and `POST /traces` on the router spends Anthropic credit per
   call. The Hermes dashboard is public and must have basic-auth (or OAuth/OIDC)
   set before the first deploy; the API on 8642 stays internal.
+- **Keep `authentik-worker` and `uzora` off public domains.** The authentik
+  **server** is public (login / OIDC / JWKS) only after
+  `AUTHENTIK_BOOTSTRAP_PASSWORD`, `AUTHENTIK_BOOTSTRAP_EMAIL`, and
+  `AUTHENTIK_BOOTSTRAP_TOKEN` are set on both processes — otherwise
+  first-boot setup is an internet race. Confirm `/if/flow/initial-setup/`
+  is closed before trusting the domain. Uzora is an internal token stub,
+  not a cross-project MCP hop.
 
 See [troubleshooting.md](troubleshooting.md) for the current list of known
 bugs, several of which will bite on a first deploy.

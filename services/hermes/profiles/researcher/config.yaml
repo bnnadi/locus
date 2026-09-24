@@ -1,0 +1,43 @@
+# Researcher lane. Answers a question and writes findings; changes nothing.
+#
+# This is the only lane that reads untrusted external content, which makes it
+# the team's prompt-injection surface. Two consequences shape this config:
+#
+#   1. Web access lives in the OpenCode agent, not here. The shim never fetches
+#      anything itself, so a hostile page is never in this profile's context.
+#   2. The lane writes findings only. It has no git identity, cannot commit or
+#      push, and cannot touch source or tests — so a page that successfully
+#      talks the researcher into "just fixing this" has nothing to act on.
+#
+# Findings come back as a declared card artifact rather than a repo commit, so
+# research output never needs a shared worktree.
+
+toolsets:
+  - terminal
+  - memory
+
+agent:
+  disabled_toolsets:
+    - delegation
+    - browser
+    - code_execution
+    # The Hermes-side web tools stay off deliberately. Fetching happens inside
+    # OpenCode, where the permission rules and the deny-first bash allowlist
+    # apply to whatever the fetched content tries to talk the agent into.
+    - web
+    # NEVER add `kanban` here. The dispatcher injects the kanban toolset at
+    # spawn time via HERMES_KANBAN_TASK, and disabled_toolsets is applied last
+    # and wins over that injection. Listing it would strip kanban_complete and
+    # every run would be reaped as a protocol violation.
+
+terminal:
+  backend: local
+  # Scopes ~/.config/opencode to this profile, so the only agent reachable
+  # from this lane is the read-mostly `researcher`. It is also why this lane
+  # has no git credentials: nothing here is expected to commit.
+  home_mode: profile
+  # cwd unset on purpose: the dispatcher pins the card's workspace and exports
+  # HERMES_KANBAN_WORKSPACE.
+
+delegation:
+  orchestrator_enabled: false

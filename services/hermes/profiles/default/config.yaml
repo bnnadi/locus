@@ -1,0 +1,60 @@
+# Orchestrator profile. Its only job is routing work onto the kanban board.
+#
+# The security model of the whole shadow team rests on this profile being
+# unable to do implementation work itself. Two keys express that, deliberately
+# redundantly: `toolsets` is an allowlist, and `agent.disabled_toolsets` is
+# documented to apply after every other source and always win. If only one of
+# the two is honored by the running build, this profile still cannot execute.
+# Verify with `hermes -p default tools --summary` after install.
+
+# Model is intentionally absent. A distribution's config.yaml is applied on
+# install, so pinning a model here would clobber whatever the volume already
+# has. Set it once with the dashboard or `hermes -p default model`. This is the
+# profile whose judgment matters, so it is the one worth spending on.
+
+toolsets:
+  - kanban
+  - gateway
+  - memory
+
+agent:
+  disabled_toolsets:
+    - terminal
+    - file
+    - code_execution
+    - browser
+    - web
+    # delegate_task children inherit the parent's tool access, so they cannot
+    # implement anything this profile cannot. They would still be an unlogged
+    # side channel around the board, which is the one audit trail we have.
+    - delegation
+
+kanban:
+  # The built-in Triage decomposer is a SECOND router: it reads profile
+  # descriptions and assigns cards using its own auxiliary LLM, without ever
+  # consulting this profile. Left at its default of true it silently violates
+  # "only default assigns work".
+  auto_decompose: false
+  orchestrator_profile: default
+  # A card whose assignee does not resolve lands back here rather than on a
+  # worker lane.
+  default_assignee: default
+  # Terminal events on cards this profile created resume its session with the
+  # worker's handoff summary. This is the return half of hub-and-spoke.
+  auto_subscribe_on_create: true
+
+delegation:
+  orchestrator_enabled: false
+
+# Opening a pull request is the one action this profile takes outside the
+# board. It arrives as an MCP tool rather than the terminal toolset, so the
+# orchestrator gains a PR without gaining the ability to run commands.
+#
+# Bearer, not OAuth: the gateway has no TTY, and an OAuth server parks the
+# connection with OAuthNonInteractiveError. The same failure took out the
+# Linear, tickets, and knowledge-graph MCPs on 2026-08-21.
+mcp_servers:
+  github:
+    url: https://api.githubcopilot.com/mcp/
+    headers:
+      Authorization: Bearer ${GITHUB_PAT}

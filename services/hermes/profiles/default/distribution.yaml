@@ -1,0 +1,17 @@
+name: locus-shadow-default
+version: 0.1.0
+description: >-
+  Shadow dev team orchestrator. Decomposes a goal into kanban cards, routes them
+  to the researcher/spec/engineer/qa lanes, and judges the results. Never
+  implements.
+author: locus
+license: MIT
+
+env_requires:
+  - name: GITHUB_PAT
+    description: >-
+      Fine-grained GitHub token scoped to the sandbox repo, with Contents and
+      Pull requests read/write and NO Workflows permission. Withholding
+      Workflows is what stops an agent editing .github/workflows to gain CI
+      execution with your secrets: GitHub rejects such a push outright.
+    required: true

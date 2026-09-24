@@ -1,0 +1,9 @@
+name: locus-shadow-researcher
+version: 0.1.0
+description: >-
+  Researcher lane. Investigates a question against the codebase and external
+  sources, then hands back written findings as a durable card attachment. The
+  only lane with web access, and the only one that ingests untrusted input, so
+  it cannot write source, tests, or git history.
+author: locus
+license: MIT
