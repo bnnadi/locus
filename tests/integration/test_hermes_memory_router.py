@@ -6,11 +6,13 @@ Requires a running router instance with live Neo4j + Qdrant connections
 
 Run: pytest tests/integration/test_hermes_memory_router.py --router-url=http://localhost:8000
 """
+
 import os
 import time
 import uuid
-import requests
+
 import pytest
+import requests
 
 ROUTER_URL = os.environ.get("HERMES_MEMORY_ROUTER_URL", "http://localhost:8000")
 
@@ -91,7 +93,11 @@ def test_retrieve_after_ingest(trace_id):
 
     resp = requests.post(
         f"{ROUTER_URL}/retrieve",
-        json={"query": "null check before using an object", "task_type": "debugging", "k": 1},
+        json={
+            "query": "null check before using an object",
+            "task_type": "debugging",
+            "k": 1,
+        },
     )
     assert resp.status_code == 200
     results = resp.json()["results"]
@@ -103,7 +109,11 @@ def test_retrieve_after_ingest(trace_id):
 def test_retrieve_respects_min_success_rate():
     resp = requests.post(
         f"{ROUTER_URL}/retrieve",
-        json={"query": "anything", "k": 5, "min_success_rate": 1.1},  # impossible threshold
+        json={
+            "query": "anything",
+            "k": 5,
+            "min_success_rate": 1.1,
+        },  # impossible threshold
     )
     assert resp.status_code == 200
     assert resp.json()["results"] == []

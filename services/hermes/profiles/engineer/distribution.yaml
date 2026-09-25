@@ -1,0 +1,8 @@
+name: locus-shadow-engineer
+version: 0.1.0
+description: >-
+  Engineer lane. Briefs the OpenCode `engineer` agent to make the spec lane's
+  failing tests pass, verifies independently, and closes the card. Cannot
+  modify test files.
+author: locus
+license: MIT

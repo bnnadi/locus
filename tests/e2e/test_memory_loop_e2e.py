@@ -7,16 +7,19 @@ overriding.
 
 Run against staging only: pytest tests/e2e/test_memory_loop_e2e.py --router-url=<staging>
 """
+
 import os
 import time
 import uuid
-import requests
+
 import pytest
+import requests
 
 ROUTER_URL = os.environ.get("HERMES_MEMORY_ROUTER_URL")
 
 pytestmark = pytest.mark.skipif(
-    not ROUTER_URL, reason="HERMES_MEMORY_ROUTER_URL not set — e2e tests require a staging deployment"
+    not ROUTER_URL,
+    reason="HERMES_MEMORY_ROUTER_URL not set — e2e tests require a staging deployment",
 )
 
 
@@ -52,7 +55,11 @@ def test_full_learning_loop():
     # 2. Second, similar task: retrieval should surface the same strategy
     retrieve_resp = requests.post(
         f"{ROUTER_URL}/retrieve",
-        json={"query": "reduce cyclomatic complexity with early returns", "task_type": task_type, "k": 1},
+        json={
+            "query": "reduce cyclomatic complexity with early returns",
+            "task_type": task_type,
+            "k": 1,
+        },
     )
     retrieve_resp.raise_for_status()
     results = retrieve_resp.json()["results"]

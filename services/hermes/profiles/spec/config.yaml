@@ -1,0 +1,30 @@
+# Spec lane. Writes the failing test first. A lifecycle shim: OpenCode writes
+# the test, this profile briefs it, confirms the test actually fails, and
+# closes the card.
+
+toolsets:
+  - terminal
+  - memory
+
+agent:
+  disabled_toolsets:
+    - delegation
+    - browser
+    - web
+    - code_execution
+    # NEVER add `kanban` here. The dispatcher injects the kanban toolset at
+    # spawn time via HERMES_KANBAN_TASK, and disabled_toolsets is applied last
+    # and wins over that injection. Listing it would strip kanban_complete and
+    # every run would be reaped as a protocol violation.
+
+terminal:
+  backend: local
+  # Scopes ~/.config/opencode to this profile, so the only OpenCode agent
+  # reachable from this lane is `spec` — the one that can write tests and
+  # nothing else.
+  home_mode: profile
+  # cwd unset on purpose: the dispatcher pins the card's workspace and exports
+  # HERMES_KANBAN_WORKSPACE.
+
+delegation:
+  orchestrator_enabled: false

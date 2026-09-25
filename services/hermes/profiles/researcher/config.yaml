@@ -1,0 +1,50 @@
+# Researcher lane. Answers a question and writes findings; changes nothing.
+#
+# This is the only lane that reads untrusted external content, which makes it
+# the team's prompt-injection surface.
+#
+# Web access lives in the OpenCode agent rather than here, and the OpenCode
+# agent is denied every command that can execute code, so the "findings only"
+# write restriction is a real boundary on that process.
+#
+# What this does NOT do: contain the shim. This profile has the `terminal`
+# toolset with no command allowlist, and Hermes offers no per-profile command
+# restriction to mirror the OpenCode one. Attacker-shaped text reaches the shim
+# regardless, via OpenCode's stdout and final message. So the privileged
+# process in this lane is the unrestricted one, and the containment claim
+# belongs to the OpenCode agent only. SOUL.md tells the shim not to read the
+# findings body for this reason, which reduces exposure without closing it.
+#
+# Findings come back as a declared card artifact rather than a repo commit, so
+# research output does not need — and must not be given — the shared worktree
+# the spec/engineer/qa chain uses. See services/hermes/SECURITY.md.
+
+toolsets:
+  - terminal
+  - memory
+
+agent:
+  disabled_toolsets:
+    - delegation
+    - browser
+    - code_execution
+    # The Hermes-side web tools stay off deliberately. Fetching happens inside
+    # OpenCode, where the permission rules and the deny-first bash allowlist
+    # apply to whatever the fetched content tries to talk the agent into.
+    - web
+    # NEVER add `kanban` here. The dispatcher injects the kanban toolset at
+    # spawn time via HERMES_KANBAN_TASK, and disabled_toolsets is applied last
+    # and wins over that injection. Listing it would strip kanban_complete and
+    # every run would be reaped as a protocol violation.
+
+terminal:
+  backend: local
+  # Scopes ~/.config/opencode to this profile, so the only agent reachable
+  # from this lane is the read-mostly `researcher`. It is also why this lane
+  # has no git credentials: nothing here is expected to commit.
+  home_mode: profile
+  # cwd unset on purpose: the dispatcher pins the card's workspace and exports
+  # HERMES_KANBAN_WORKSPACE.
+
+delegation:
+  orchestrator_enabled: false

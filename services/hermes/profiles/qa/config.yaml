@@ -1,0 +1,35 @@
+# QA lane. Verifies the engineer's work and reports. Writes nothing.
+#
+# The verifier must not be able to weaken what it verifies, so this lane's
+# OpenCode agent denies `edit` outright and denies git commit/push. Note that
+# `edit: deny` alone would be decorative: OpenCode's built-in `general`
+# subagent can write files, so the agent must also deny `task`. See the
+# opencode/ directory.
+
+toolsets:
+  - terminal
+  - memory
+
+agent:
+  disabled_toolsets:
+    - delegation
+    - browser
+    - web
+    - code_execution
+    # NEVER add `kanban` here. The dispatcher injects the kanban toolset at
+    # spawn time via HERMES_KANBAN_TASK, and disabled_toolsets is applied last
+    # and wins over that injection. Listing it would strip kanban_complete and
+    # every run would be reaped as a protocol violation.
+
+terminal:
+  backend: local
+  # Scopes ~/.config/opencode to this profile. This lane's roster contains
+  # only the read-only `qa` agent, so it cannot reach the engineer agent's
+  # write permissions. It is also the reason this lane needs no git identity:
+  # nothing here is expected to commit.
+  home_mode: profile
+  # cwd unset on purpose: the dispatcher pins the card's workspace and exports
+  # HERMES_KANBAN_WORKSPACE.
+
+delegation:
+  orchestrator_enabled: false

@@ -21,11 +21,18 @@ jobs:
           # bash 3.2 ships on macOS, so avoid bash 4+ features in these scripts.
           find scripts -name '*.sh' -print0 | xargs -0 -n1 bash -n
           find services -name 'entrypoint.sh' -print0 | xargs -0 -n1 sh -n
+          # Non-entrypoint service scripts are bash, not sh.
+          find services -name '*.sh' ! -name 'entrypoint.sh' -print0 \
+            | xargs -0 -r -n1 bash -n
 
       - name: shellcheck
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
-          find scripts -name '*.sh' -print0 | xargs -0 shellcheck --severity=warning
+          # services/ is included so install-profiles.sh is linted; it builds
+          # the agent permission files, where a quoting slip is a security bug.
+          # tests/ is excluded pending a pre-existing SC2034.
+          find scripts services -name '*.sh' -print0 \
+            | xargs -0 shellcheck --severity=warning
 
       - name: Scripts are executable
         run: |
@@ -46,6 +53,15 @@ jobs:
 
       - name: n8n aligns PORT and N8N_PORT
         run: bash tests/unit/test_n8n_port_align.sh
+
+      - name: hermes pins the opencode CLI
+        run: bash tests/unit/test_hermes_opencode_pin.sh
+
+      - name: hermes base image tag matches HERMES_VERSION
+        run: bash tests/unit/test_hermes_image_pin.sh
+
+      - name: CI pins its own tools and ruff's rule set
+        run: bash tests/unit/test_ci_tool_pins.sh
 
   compose:
     name: Compose config
@@ -95,7 +111,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r services/hermes-memory-router/requirements.txt
-          pip install ruff pytest
+          # Exact pins: an unpinned linter is a gate that moves on its own.
+          # Bumping ruff is the moment to re-read ruff.toml's rule list.
+          pip install ruff==0.16.9 pytest==9.1.1
 
       - name: Lint
         run: ruff check services/hermes-memory-router tests
@@ -133,7 +151,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install test dependencies
-        run: pip install pytest requests
+        # requests matches the app pin in requirements.txt so the integration
+        # tests exercise the same client version the router ships with.
+        run: pip install pytest==9.1.1 requests==2.32.0
 
       - name: Run integration tests
         env:

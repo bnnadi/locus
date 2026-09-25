@@ -9,25 +9,28 @@ Part of the Locus stack. See docs/deployment/hermes-memory-layer.md and
 docs/runbooks/hermes-memory-runbook.md for operational detail.
 """
 
-import os
-import json
 import hashlib
+import json
+import os
 import time
 from enum import Enum
-from typing import Optional
+
+import requests
+from anthropic import Anthropic
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from identity import below_min_success_rate, strategy_id_for
 from neo4j import GraphDatabase
+from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    PointStruct, Filter, FieldCondition, MatchValue,
-    VectorParams, Distance,
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
 )
 from sentence_transformers import SentenceTransformer
-from anthropic import Anthropic
-import requests
-
-from identity import below_min_success_rate, strategy_id_for
 
 app = FastAPI(title="Hermes Memory Extraction Router")
 
@@ -35,7 +38,12 @@ COLLECTION = "hermes_memory"
 EMBEDDING_DIM = 384  # all-MiniLM-L6-v2
 
 
-class ExtractionBackend(str, Enum):
+# Not StrEnum, though UP042 asks for it: str(member) differs between the two
+# ("ExtractionBackend.CLAUDE" here, "claude" under StrEnum), and the 502
+# detail on line ~212 interpolates a member directly, so switching would
+# change an API response body. Persistence is unaffected — it uses
+# .value explicitly. Worth doing as its own change, not as a lint fix.
+class ExtractionBackend(str, Enum):  # noqa: UP042
     CLAUDE = "claude"
     OLLAMA = "ollama"
     HERMES = "hermes"
@@ -47,10 +55,10 @@ class ReasoningTraceIn(BaseModel):
     task_type: str
     raw_reasoning: str
     outcome: str  # "success" | "failure" | "partial"
-    backend: Optional[ExtractionBackend] = None  # override default
+    backend: ExtractionBackend | None = None  # override default
     # Optional caller-owned key. When omitted, identity is derived from
     # task_type + normalized raw_reasoning — never from model output.
-    strategy_key: Optional[str] = None
+    strategy_key: str | None = None
 
 
 class StrategyOut(BaseModel):
@@ -64,9 +72,9 @@ class StrategyOut(BaseModel):
 
 class RetrieveIn(BaseModel):
     query: str
-    task_type: Optional[str] = None
+    task_type: str | None = None
     k: int = 1
-    min_success_rate: Optional[float] = None
+    min_success_rate: float | None = None
 
 
 # --- Clients (initialized once at startup) ---
@@ -74,8 +82,12 @@ neo4j_driver = GraphDatabase.driver(
     os.environ["NEO4J_URI"],
     auth=(os.environ["NEO4J_USER"], os.environ["NEO4J_PASSWORD"]),
 )
-qdrant = QdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ.get("QDRANT_API_KEY"))
-embedder = SentenceTransformer(os.environ.get("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
+qdrant = QdrantClient(
+    url=os.environ["QDRANT_URL"], api_key=os.environ.get("QDRANT_API_KEY")
+)
+embedder = SentenceTransformer(
+    os.environ.get("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+)
 DEFAULT_BACKEND = ExtractionBackend(os.environ.get("EXTRACTION_BACKEND", "claude"))
 
 
@@ -87,11 +99,16 @@ def ensure_collection():
             collection_name=COLLECTION,
             vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
         )
-        qdrant.create_payload_index(collection_name=COLLECTION, field_name="task_type", field_schema="keyword")
-        qdrant.create_payload_index(collection_name=COLLECTION, field_name="success_rate", field_schema="float")
+        qdrant.create_payload_index(
+            collection_name=COLLECTION, field_name="task_type", field_schema="keyword"
+        )
+        qdrant.create_payload_index(
+            collection_name=COLLECTION, field_name="success_rate", field_schema="float"
+        )
 
 
 # --- Extraction backends ---
+
 
 def extract_claude(trace: ReasoningTraceIn) -> dict:
     client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -159,6 +176,7 @@ BACKENDS = {
 
 # --- Endpoints ---
 
+
 @app.post("/traces", response_model=StrategyOut)
 def ingest_trace(trace: ReasoningTraceIn):
     """Store trace in Neo4j (immutable), extract + store a strategy."""
@@ -189,13 +207,20 @@ def ingest_trace(trace: ReasoningTraceIn):
 
     try:
         extracted = BACKENDS[backend](trace)
-    except Exception as e:
+    # Deliberately broad: this is the API boundary for third-party extraction
+    # backends, and an unanticipated exception escaping here would return a
+    # 500 and strand the trace on extraction_status='pending' forever. Every
+    # path below either records the failure or re-raises, so nothing is
+    # swallowed.
+    except Exception as e:  # noqa: BLE001
         with neo4j_driver.session() as session:
             session.run(
                 "MATCH (rt:ReasoningTrace {id: $id}) SET rt.extraction_status = 'failed'",
                 {"id": trace.trace_id},
             )
-        raise HTTPException(status_code=502, detail=f"Extraction failed ({backend}): {e}")
+        raise HTTPException(
+            status_code=502, detail=f"Extraction failed ({backend}): {e}"
+        )
 
     strategy_id = strategy_id_for(
         task_type=trace.task_type,
@@ -241,7 +266,9 @@ def ingest_trace(trace: ReasoningTraceIn):
                 "backend": backend.value,
             },
         ).single()
-        success_rate = float(record["success_rate"]) if record else (1.0 if success else 0.0)
+        success_rate = (
+            float(record["success_rate"]) if record else (1.0 if success else 0.0)
+        )
 
     text_to_embed = f"{extracted['title']}. {extracted['description']}"
     vector = embedder.encode(text_to_embed).tolist()
@@ -289,7 +316,9 @@ def retrieve_strategy(req: RetrieveIn):
     query_filter = None
     conditions = []
     if req.task_type:
-        conditions.append(FieldCondition(key="task_type", match=MatchValue(value=req.task_type)))
+        conditions.append(
+            FieldCondition(key="task_type", match=MatchValue(value=req.task_type))
+        )
     if conditions:
         query_filter = Filter(must=conditions)
 
@@ -319,7 +348,9 @@ def retrieve_strategy(req: RetrieveIn):
             if not record:
                 continue
             strategy = record["strategy"]
-            if below_min_success_rate(strategy.get("success_rate"), req.min_success_rate):
+            if below_min_success_rate(
+                strategy.get("success_rate"), req.min_success_rate
+            ):
                 continue
 
             enriched.append(
@@ -327,7 +358,9 @@ def retrieve_strategy(req: RetrieveIn):
                     "vector_score": r.score,
                     "strategy": strategy,
                     "source_traces": record["source_traces"],
-                    "contradictions": [c for c in record["contradictions"] if c["title"]],
+                    "contradictions": [
+                        c for c in record["contradictions"] if c["title"]
+                    ],
                     "audit_path": f"Qdrant point {r.id} -> Neo4j StrategyItem {sid} -> DERIVES_STRATEGY <- ReasoningTrace",
                 }
             )

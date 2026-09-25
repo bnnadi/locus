@@ -13,7 +13,7 @@ infrastructure, not an application — nothing here owns product logic.
 | `qdrant` | Vector index for semantic recall | `services/qdrant` | No |
 | `ollama` | Local LLM inference | `services/ollama` | No |
 | `n8n` | Workflow orchestration across MCP services | `services/n8n` | Yes |
-| `hermes` | Hermes Agent gateway + dashboard | `services/hermes` | Yes (dashboard) |
+| `hermes` | Hermes Agent gateway + dashboard; shadow-team profiles under `services/hermes/profiles/` | `services/hermes` | Yes (dashboard) |
 | `hermes-memory-router` | Bridges Hermes to Neo4j + Qdrant | `services/hermes-memory-router` | No |
 
 `n8n` and the Hermes dashboard are the public surfaces. Hermes on a public

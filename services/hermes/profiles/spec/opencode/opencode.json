@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "task": { "*": "deny" },
+    "external_directory": { "*": "deny" },
+    "question": "deny"
+  },
+  "agent": {
+    "general": { "disable": true },
+    "explore": { "disable": true },
+    "scout": { "disable": true },
+    "build": { "disable": true },
+    "plan": { "disable": true }
+  }
+}
