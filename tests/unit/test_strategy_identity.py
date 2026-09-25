@@ -3,7 +3,12 @@
 import importlib.util
 from pathlib import Path
 
-_IDENTITY = Path(__file__).resolve().parents[2] / "services" / "hermes-memory-router" / "identity.py"
+_IDENTITY = (
+    Path(__file__).resolve().parents[2]
+    / "services"
+    / "hermes-memory-router"
+    / "identity.py"
+)
 
 
 def _load():
@@ -38,14 +43,20 @@ def test_whitespace_and_case_do_not_fork_identity():
 
 
 def test_different_reasoning_different_id():
-    a = identity.strategy_id_for(task_type="code_review", raw_reasoning="use a guard clause")
-    b = identity.strategy_id_for(task_type="code_review", raw_reasoning="use a nested if")
+    a = identity.strategy_id_for(
+        task_type="code_review", raw_reasoning="use a guard clause"
+    )
+    b = identity.strategy_id_for(
+        task_type="code_review", raw_reasoning="use a nested if"
+    )
     assert a != b
 
 
 def test_title_is_not_part_of_identity():
     # Descriptive fields the model fills in must not move the key.
-    base = identity.strategy_id_for(task_type="code_review", raw_reasoning="guard clause")
+    base = identity.strategy_id_for(
+        task_type="code_review", raw_reasoning="guard clause"
+    )
     # strategy_key is the only override, and it is caller-owned.
     keyed = identity.strategy_id_for(
         task_type="code_review",

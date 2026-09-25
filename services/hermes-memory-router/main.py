@@ -20,8 +20,12 @@ from pydantic import BaseModel
 from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    PointStruct, Filter, FieldCondition, MatchValue,
-    VectorParams, Distance,
+    PointStruct,
+    Filter,
+    FieldCondition,
+    MatchValue,
+    VectorParams,
+    Distance,
 )
 from sentence_transformers import SentenceTransformer
 from anthropic import Anthropic
@@ -74,8 +78,12 @@ neo4j_driver = GraphDatabase.driver(
     os.environ["NEO4J_URI"],
     auth=(os.environ["NEO4J_USER"], os.environ["NEO4J_PASSWORD"]),
 )
-qdrant = QdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ.get("QDRANT_API_KEY"))
-embedder = SentenceTransformer(os.environ.get("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
+qdrant = QdrantClient(
+    url=os.environ["QDRANT_URL"], api_key=os.environ.get("QDRANT_API_KEY")
+)
+embedder = SentenceTransformer(
+    os.environ.get("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+)
 DEFAULT_BACKEND = ExtractionBackend(os.environ.get("EXTRACTION_BACKEND", "claude"))
 
 
@@ -87,11 +95,16 @@ def ensure_collection():
             collection_name=COLLECTION,
             vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
         )
-        qdrant.create_payload_index(collection_name=COLLECTION, field_name="task_type", field_schema="keyword")
-        qdrant.create_payload_index(collection_name=COLLECTION, field_name="success_rate", field_schema="float")
+        qdrant.create_payload_index(
+            collection_name=COLLECTION, field_name="task_type", field_schema="keyword"
+        )
+        qdrant.create_payload_index(
+            collection_name=COLLECTION, field_name="success_rate", field_schema="float"
+        )
 
 
 # --- Extraction backends ---
+
 
 def extract_claude(trace: ReasoningTraceIn) -> dict:
     client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -159,6 +172,7 @@ BACKENDS = {
 
 # --- Endpoints ---
 
+
 @app.post("/traces", response_model=StrategyOut)
 def ingest_trace(trace: ReasoningTraceIn):
     """Store trace in Neo4j (immutable), extract + store a strategy."""
@@ -195,7 +209,9 @@ def ingest_trace(trace: ReasoningTraceIn):
                 "MATCH (rt:ReasoningTrace {id: $id}) SET rt.extraction_status = 'failed'",
                 {"id": trace.trace_id},
             )
-        raise HTTPException(status_code=502, detail=f"Extraction failed ({backend}): {e}")
+        raise HTTPException(
+            status_code=502, detail=f"Extraction failed ({backend}): {e}"
+        )
 
     strategy_id = strategy_id_for(
         task_type=trace.task_type,
@@ -241,7 +257,9 @@ def ingest_trace(trace: ReasoningTraceIn):
                 "backend": backend.value,
             },
         ).single()
-        success_rate = float(record["success_rate"]) if record else (1.0 if success else 0.0)
+        success_rate = (
+            float(record["success_rate"]) if record else (1.0 if success else 0.0)
+        )
 
     text_to_embed = f"{extracted['title']}. {extracted['description']}"
     vector = embedder.encode(text_to_embed).tolist()
@@ -289,7 +307,9 @@ def retrieve_strategy(req: RetrieveIn):
     query_filter = None
     conditions = []
     if req.task_type:
-        conditions.append(FieldCondition(key="task_type", match=MatchValue(value=req.task_type)))
+        conditions.append(
+            FieldCondition(key="task_type", match=MatchValue(value=req.task_type))
+        )
     if conditions:
         query_filter = Filter(must=conditions)
 
@@ -319,7 +339,9 @@ def retrieve_strategy(req: RetrieveIn):
             if not record:
                 continue
             strategy = record["strategy"]
-            if below_min_success_rate(strategy.get("success_rate"), req.min_success_rate):
+            if below_min_success_rate(
+                strategy.get("success_rate"), req.min_success_rate
+            ):
                 continue
 
             enriched.append(
@@ -327,7 +349,9 @@ def retrieve_strategy(req: RetrieveIn):
                     "vector_score": r.score,
                     "strategy": strategy,
                     "source_traces": record["source_traces"],
-                    "contradictions": [c for c in record["contradictions"] if c["title"]],
+                    "contradictions": [
+                        c for c in record["contradictions"] if c["title"]
+                    ],
                     "audit_path": f"Qdrant point {r.id} -> Neo4j StrategyItem {sid} -> DERIVES_STRATEGY <- ReasoningTrace",
                 }
             )
