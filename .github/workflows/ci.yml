@@ -77,6 +77,11 @@ jobs:
           NEO4J_PASSWORD: ci-not-a-real-password
           N8N_DB_PASSWORD: ci-not-a-real-password
           N8N_ENCRYPTION_KEY: ci-not-a-real-key
+          AUTHENTIK_SECRET_KEY: ci-not-a-real-authentik-secret
+          AUTHENTIK_DB_PASSWORD: ci-not-a-real-password
+          AUTHENTIK_BOOTSTRAP_PASSWORD: ci-not-a-real-bootstrap
+          AUTHENTIK_BOOTSTRAP_EMAIL: ci@localhost
+          AUTHENTIK_BOOTSTRAP_TOKEN: ci-not-a-real-bootstrap-token
         run: |
           docker compose \
             -f docker-compose.yml \
@@ -89,7 +94,15 @@ jobs:
           NEO4J_PASSWORD: ci-not-a-real-password
           N8N_DB_PASSWORD: ci-not-a-real-password
           N8N_ENCRYPTION_KEY: ci-not-a-real-key
+          AUTHENTIK_SECRET_KEY: ci-not-a-real-authentik-secret
+          AUTHENTIK_DB_PASSWORD: ci-not-a-real-password
+          AUTHENTIK_BOOTSTRAP_PASSWORD: ci-not-a-real-bootstrap
+          AUTHENTIK_BOOTSTRAP_EMAIL: ci@localhost
+          AUTHENTIK_BOOTSTRAP_TOKEN: ci-not-a-real-bootstrap-token
         run: docker compose -f docker-compose.yml config --quiet
+
+      - name: authentik nests into server/worker Railway roots
+        run: bash tests/unit/test_authentik_nested_roots.sh
 
       - name: n8n entrypoint chowns a root-owned volume
         run: bash tests/unit/test_n8n_volume_permissions.sh
@@ -111,12 +124,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r services/hermes-memory-router/requirements.txt
+          pip install -r services/uzora/requirements.txt
           # Exact pins: an unpinned linter is a gate that moves on its own.
           # Bumping ruff is the moment to re-read ruff.toml's rule list.
           pip install ruff==0.16.9 pytest==9.1.1
 
       - name: Lint
-        run: ruff check services/hermes-memory-router tests
+        run: ruff check services/hermes-memory-router services/uzora tests
 
       - name: Import the app
         env:

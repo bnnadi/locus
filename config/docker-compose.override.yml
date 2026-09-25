@@ -41,6 +41,26 @@ services:
       # Surfaces deprecation and permission warnings that are easy to miss.
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
 
+  authentik:
+    restart: "no"
+
+  authentik-worker:
+    restart: "no"
+
+  uzora:
+    restart: "no"
+    volumes:
+      - ./services/uzora/main.py:/app/main.py:ro
+      - ./services/uzora/auth.py:/app/auth.py:ro
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8100"
+      - --reload
+
   hermes-memory-router:
     restart: "no"
     # Bind-mount the source and reload on change, so router edits do not need

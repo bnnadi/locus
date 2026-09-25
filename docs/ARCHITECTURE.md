@@ -15,20 +15,36 @@ infrastructure, not an application — nothing here owns product logic.
 | `n8n` | Workflow orchestration across MCP services | `services/n8n` | Yes |
 | `hermes` | Hermes Agent gateway + dashboard; shadow-team profiles under `services/hermes/profiles/` | `services/hermes` | Yes (dashboard) |
 | `hermes-memory-router` | Bridges Hermes to Neo4j + Qdrant | `services/hermes-memory-router` | No |
+| `authentik` | OSS IdP (OIDC / JWKS) | `services/authentik/server` | Yes (login) |
+| `authentik-worker` | authentik background tasks | `services/authentik/worker` | No |
+| `uzora` | Token gate: validates authentik JWTs | `services/uzora` | No |
 
-`n8n` and the Hermes dashboard are the public surfaces. Hermes on a public
-domain requires a dashboard auth provider (basic-auth, OAuth, or OIDC) —
-the image fails closed without one. Everything else is internal: `ollama`
-and `hermes-memory-router` ship without authentication, and the router
-spends money per request. The Hermes OpenAI API (8642) stays internal.
+`n8n`, the Hermes dashboard, and the authentik login are the public surfaces.
+Hermes on a public domain requires a dashboard auth provider (basic-auth,
+OAuth, or OIDC) — the image fails closed without one. Everything else is
+internal: `ollama` and `hermes-memory-router` ship without authentication,
+and the router spends money per request. The Hermes OpenAI API (8642)
+stays internal. `uzora` stays internal: it is a shared token gate, not an
+MCP hop. Locus private DNS cannot reach MCP servers in other Railway
+projects. `/mcp` on Uzora is unimplemented (honest 501).
+
+Authentik is infrastructure (same class as Postgres). The server is
+login, OIDC, and JWKS. The worker is a second process of the same
+image, nested under `services/authentik/`. Uzora validates tokens
+authentik issues and must not receive authentik database credentials.
+JWKS is fetched from the in-network `AUTHENTIK_URL`; `iss` / `aud` are
+checked against `AUTHENTIK_ISSUER` / `AUTHENTIK_AUDIENCE`. Product MCP
+proxying does not belong in this repo.
 
 ## Deployment model
 
 Two targets are supported deliberately, because the choice is not yet settled:
 
-- **Railway.** Per-service config in `services/<name>/railway.json`, resolved
-  from each service's Root Directory. `config/railway.yml` is a hand-maintained
-  map of the intended topology — Railway does not read it.
+- **Railway.** Per-service config in `railway.json` at that service's Root
+  Directory (usually `services/<name>`). Authentik is the exception: server
+  is `services/authentik/server`, worker is `services/authentik/worker`.
+  `config/railway.yml` is a hand-maintained map of the intended topology —
+  Railway does not read it.
 - **Docker Compose.** Base definition at `docker-compose.yml`, development
   overrides at `config/docker-compose.override.yml`, passed explicitly with
   `-f` because Compose only auto-discovers an override sitting beside the base.
@@ -45,7 +61,9 @@ cannot reach another's tables.
 This is a deliberate narrowing of the broader service-isolation rule (one
 Postgres plugin per service). The tradeoff: a single instance means a single
 blast radius for host-level failure, in exchange for one thing to back up and
-one bill. Revisit if any consumer's load or uptime needs diverge.
+one bill. Authentik is the first consumer whose uptime actually diverges from
+n8n — a disk-full or failover takes login down with the workflow engine.
+Revisit with a dedicated plugin if login uptime needs to diverge.
 
 ## Migrations
 
@@ -63,8 +81,8 @@ Three properties worth knowing:
   or neither does. Statements that cannot run in a transaction must declare
   `-- migration:no-transaction`, and those are recorded non-atomically.
 
-`migrations/postgres/` is currently empty: n8n manages its own schema, and
-nothing else in Locus owns relational tables yet.
+`migrations/postgres/` is currently empty: n8n and authentik manage their
+own schemas, and nothing else in Locus owns relational tables yet.
 
 ## Hermes Memory Layer
 

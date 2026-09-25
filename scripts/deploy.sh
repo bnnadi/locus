@@ -9,9 +9,10 @@
 # The target can also come from LOCUS_DEPLOY_TARGET. There is no default:
 # picking one silently is how you deploy to the wrong place.
 #
-# Railway reads each service's config from services/<name>/railway.json, which
-# it only finds when that service's Root Directory is set to services/<name>.
-# If a deploy ignores its railway.json, check that first.
+# Railway reads each service's config from railway.json in that service's
+# source directory (usually services/<name>). Authentik is the exception:
+# server is services/authentik/server, worker is services/authentik/worker.
+# If a deploy ignores its railway.json, check the dashboard Root Directory.
 
 set -euo pipefail
 
@@ -24,11 +25,21 @@ SKIP_MIGRATIONS=false
 
 # Services built from this repo, in dependency order. Postgres and Neo4j are
 # provisioned from Railway templates and are not built here.
-SERVICES=(qdrant ollama n8n hermes hermes-memory-router)
+SERVICES=(qdrant ollama n8n hermes hermes-memory-router authentik authentik-worker uzora)
 
 die() {
   echo "error: $*" >&2
   exit 1
+}
+
+# Railway Root Directory / compose build context. Most services are
+# services/<name>. Authentik is two processes under one folder.
+source_dir_for() {
+  case "$1" in
+    authentik)        echo "services/authentik/server" ;;
+    authentik-worker) echo "services/authentik/worker" ;;
+    *)                echo "services/${1}" ;;
+  esac
 }
 
 # Health path per service. A service with no path here is deployed but not
@@ -39,6 +50,8 @@ health_path_for() {
     hermes-memory-router) echo "/health" ;;
     ollama)               echo "/" ;;
     qdrant)               echo "/readyz" ;;
+    authentik)            echo "/-/health/ready/" ;;
+    uzora)                echo "/health" ;;
     *)                    echo "" ;;
   esac
 }
@@ -52,6 +65,8 @@ base_url_for() {
     ollama)               echo "${OLLAMA_URL:-}" ;;
     qdrant)               echo "${QDRANT_URL:-}" ;;
     hermes)               echo "${HERMES_URL:-}" ;;
+    authentik)            echo "${AUTHENTIK_URL:-}" ;;
+    uzora)                echo "${UZORA_URL:-}" ;;
     *)                    echo "" ;;
   esac
 }
@@ -121,7 +136,7 @@ case "$TARGET" in
 
     for service in "${SERVICES[@]}"; do
       echo "-- deploying ${service}"
-      railway up --service "$service" --detach "services/${service}"
+      railway up --service "$service" --detach "$(source_dir_for "$service")"
     done
 
     # Migrations run after deploy so the router image exists, but before the
@@ -152,8 +167,13 @@ case "$TARGET" in
     COMPOSE=(docker compose -f docker-compose.yml -f config/docker-compose.override.yml)
 
     if [[ -n "$ONLY_SERVICE" ]]; then
-      echo "-- building and starting ${ONLY_SERVICE}"
-      "${COMPOSE[@]}" up -d --build "$ONLY_SERVICE"
+      if [[ "$ONLY_SERVICE" == "authentik" ]]; then
+        echo "-- building and starting authentik and authentik-worker"
+        "${COMPOSE[@]}" up -d --build authentik authentik-worker
+      else
+        echo "-- building and starting ${ONLY_SERVICE}"
+        "${COMPOSE[@]}" up -d --build "$ONLY_SERVICE"
+      fi
     else
       echo "-- building and starting the full stack"
       "${COMPOSE[@]}" up -d --build

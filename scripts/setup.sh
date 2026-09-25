@@ -28,7 +28,7 @@ SKIP_MIGRATIONS=false
 
 # Services that own a Postgres database. The password for each is read from
 # <SERVICE>_DB_PASSWORD, upper-cased with dashes turned into underscores.
-DB_CONSUMERS=(n8n)
+DB_CONSUMERS=(n8n authentik)
 
 die() {
   echo "error: $*" >&2

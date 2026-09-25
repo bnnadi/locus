@@ -1,8 +1,9 @@
 # Locus
 
 Self-hostable service stack behind the MCP ecosystem: workflow orchestration
-(n8n), local inference (Ollama), and the datastores that back them (Postgres,
-Neo4j, Qdrant), plus a router bridging Hermes Agent to its memory layer.
+(n8n), local inference (Ollama), the datastores that back them (Postgres,
+Neo4j, Qdrant), a router bridging Hermes Agent to its memory layer, an OSS
+IdP (authentik), and Uzora (a token gate — not an MCP proxy).
 
 Infrastructure only — no product logic lives here.
 
@@ -23,7 +24,7 @@ how the pieces fit together.
 ## Layout
 
 ```
-services/     One directory per built service, each with its Dockerfile
+services/     One directory per built service (authentik nests server/ and worker/)
 scripts/      setup.sh, deploy.sh, migration.sh, and maintenance/
 config/       env.example, railway.yml, Compose override
 migrations/   postgres/ and neo4j/, applied in filename order
