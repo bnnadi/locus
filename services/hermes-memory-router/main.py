@@ -30,6 +30,7 @@ from qdrant_client.models import (
     PointStruct,
     VectorParams,
 )
+from redact import redact_reasoning
 from sentence_transformers import SentenceTransformer
 
 app = FastAPI(title="Hermes Memory Extraction Router")
@@ -53,6 +54,8 @@ class ReasoningTraceIn(BaseModel):
     trace_id: str
     task_id: str
     task_type: str
+    # Stored field: the redacted string.  When strategy_key is absent, the
+    # strategy hash is derived from task_type + normalized raw_reasoning.
     raw_reasoning: str
     outcome: str  # "success" | "failure" | "partial"
     backend: ExtractionBackend | None = None  # override default
@@ -180,6 +183,7 @@ BACKENDS = {
 @app.post("/traces", response_model=StrategyOut)
 def ingest_trace(trace: ReasoningTraceIn):
     """Store trace in Neo4j (immutable), extract + store a strategy."""
+    trace = trace.model_copy(update={"raw_reasoning": redact_reasoning(trace.raw_reasoning)})
     backend = trace.backend or DEFAULT_BACKEND
 
     with neo4j_driver.session() as session:

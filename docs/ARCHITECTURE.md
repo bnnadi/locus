@@ -135,7 +135,7 @@ on one instance — see the open questions below.
    had one index-versus-constraint name collision, which is exactly how a
    shared label bites.
 3. **Strategy identity (resolved).** `StrategyItem` ids are derived from a
-   caller-supplied `strategy_key`, or from `task_type` + normalized
+   caller-supplied `strategy_key`, or from `task_type` + normalized redacted
    `raw_reasoning`. Model-generated titles are descriptive only and never
    enter the hash.
 4. **Embedding model.** `all-MiniLM-L6-v2` (free, local, 384-dim) is the v0.1
