@@ -10,8 +10,9 @@ Run: pytest tests/integration/test_hermes_memory_router.py --router-url=http://l
 import os
 import time
 import uuid
-import requests
+
 import pytest
+import requests
 
 ROUTER_URL = os.environ.get("HERMES_MEMORY_ROUTER_URL", "http://localhost:8000")
 

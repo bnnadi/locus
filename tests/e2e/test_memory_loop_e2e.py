@@ -11,8 +11,9 @@ Run against staging only: pytest tests/e2e/test_memory_loop_e2e.py --router-url=
 import os
 import time
 import uuid
-import requests
+
 import pytest
+import requests
 
 ROUTER_URL = os.environ.get("HERMES_MEMORY_ROUTER_URL")
 

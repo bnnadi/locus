@@ -9,29 +9,28 @@ Part of the Locus stack. See docs/deployment/hermes-memory-layer.md and
 docs/runbooks/hermes-memory-runbook.md for operational detail.
 """
 
-import os
-import json
 import hashlib
+import json
+import os
 import time
 from enum import Enum
-from typing import Optional
+
+import requests
+from anthropic import Anthropic
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from identity import below_min_success_rate, strategy_id_for
 from neo4j import GraphDatabase
+from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    PointStruct,
-    Filter,
-    FieldCondition,
-    MatchValue,
-    VectorParams,
     Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
 )
 from sentence_transformers import SentenceTransformer
-from anthropic import Anthropic
-import requests
-
-from identity import below_min_success_rate, strategy_id_for
 
 app = FastAPI(title="Hermes Memory Extraction Router")
 
@@ -39,7 +38,12 @@ COLLECTION = "hermes_memory"
 EMBEDDING_DIM = 384  # all-MiniLM-L6-v2
 
 
-class ExtractionBackend(str, Enum):
+# Not StrEnum, though UP042 asks for it: str(member) differs between the two
+# ("ExtractionBackend.CLAUDE" here, "claude" under StrEnum), and the 502
+# detail on line ~212 interpolates a member directly, so switching would
+# change an API response body. Persistence is unaffected — it uses
+# .value explicitly. Worth doing as its own change, not as a lint fix.
+class ExtractionBackend(str, Enum):  # noqa: UP042
     CLAUDE = "claude"
     OLLAMA = "ollama"
     HERMES = "hermes"
@@ -51,10 +55,10 @@ class ReasoningTraceIn(BaseModel):
     task_type: str
     raw_reasoning: str
     outcome: str  # "success" | "failure" | "partial"
-    backend: Optional[ExtractionBackend] = None  # override default
+    backend: ExtractionBackend | None = None  # override default
     # Optional caller-owned key. When omitted, identity is derived from
     # task_type + normalized raw_reasoning — never from model output.
-    strategy_key: Optional[str] = None
+    strategy_key: str | None = None
 
 
 class StrategyOut(BaseModel):
@@ -68,9 +72,9 @@ class StrategyOut(BaseModel):
 
 class RetrieveIn(BaseModel):
     query: str
-    task_type: Optional[str] = None
+    task_type: str | None = None
     k: int = 1
-    min_success_rate: Optional[float] = None
+    min_success_rate: float | None = None
 
 
 # --- Clients (initialized once at startup) ---
@@ -203,7 +207,12 @@ def ingest_trace(trace: ReasoningTraceIn):
 
     try:
         extracted = BACKENDS[backend](trace)
-    except Exception as e:
+    # Deliberately broad: this is the API boundary for third-party extraction
+    # backends, and an unanticipated exception escaping here would return a
+    # 500 and strand the trace on extraction_status='pending' forever. Every
+    # path below either records the failure or re-raises, so nothing is
+    # swallowed.
+    except Exception as e:  # noqa: BLE001
         with neo4j_driver.session() as session:
             session.run(
                 "MATCH (rt:ReasoningTrace {id: $id}) SET rt.extraction_status = 'failed'",

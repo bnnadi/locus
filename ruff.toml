@@ -1,0 +1,26 @@
+# Explicit rule selection, because the default set is not stable across ruff
+# releases. Without this file the lint gate silently moved: ruff 0.6.9 and
+# 0.9.10 reported 0 findings on this codebase, 0.16.9 reported 8, and CI's
+# Lint step was red on every run from 2026-08-17 onward with nothing in any
+# diff to explain it. Pair this with the exact ruff pin in
+# .github/workflows/ci.yml; tests/unit/test_ci_tool_pins.sh enforces both.
+#
+# CI runs Python 3.11 (.github/workflows/ci.yml). Keep these in step — the
+# same test cross-checks them, since target-version is what decides whether
+# rules like UP045 (`X | None`) are even applicable.
+target-version = "py311"
+
+[lint]
+# Chosen to match docs/rules the project already follows (sorted imports,
+# PEP 604 unions, specific exceptions) rather than to match whatever ruff
+# defaults to. Adding a family here is a deliberate act; a ruff upgrade is
+# the moment to re-read this list, not a moment to be surprised by it.
+select = [
+  "E4",  # pycodestyle: imports
+  "E7",
+  "E9",
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+  "BLE", # flake8-blind-except
+]

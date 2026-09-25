@@ -60,6 +60,9 @@ jobs:
       - name: hermes base image tag matches HERMES_VERSION
         run: bash tests/unit/test_hermes_image_pin.sh
 
+      - name: CI pins its own tools and ruff's rule set
+        run: bash tests/unit/test_ci_tool_pins.sh
+
   compose:
     name: Compose config
     runs-on: ubuntu-latest
@@ -108,7 +111,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r services/hermes-memory-router/requirements.txt
-          pip install ruff pytest
+          # Exact pins: an unpinned linter is a gate that moves on its own.
+          # Bumping ruff is the moment to re-read ruff.toml's rule list.
+          pip install ruff==0.16.9 pytest==9.1.1
 
       - name: Lint
         run: ruff check services/hermes-memory-router tests
@@ -146,7 +151,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install test dependencies
-        run: pip install pytest requests
+        # requests matches the app pin in requirements.txt so the integration
+        # tests exercise the same client version the router ships with.
+        run: pip install pytest==9.1.1 requests==2.32.0
 
       - name: Run integration tests
         env:
