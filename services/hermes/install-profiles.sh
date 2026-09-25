@@ -122,8 +122,26 @@ install_opencode_config() {
   [ -d "$src" ] || die "missing OpenCode config at $src"
 
   mkdir -p "${dest}/agents"
-  install -m 600 "${src}/opencode.json" "${dest}/opencode.json"
-  install -m 600 "${src}/agents/${name}.md" "${dest}/agents/${name}.md"
+
+  # Read-only, and root-owned where we have the privilege to do it.
+  #
+  # These two files ARE the lane's permission model, and they sit on the
+  # mounted volume under the same uid the tool subprocess runs as. A
+  # bash-level write from a compromised lane would rewrite them, and the
+  # change would survive the card, the session, and a container restart —
+  # every later card in that lane then runs under permissions an attacker
+  # chose. Mode 444 alone does not fix that, because the owner can always
+  # chmod its own file; the owner has to be a different uid.
+  install -m 444 "${src}/opencode.json" "${dest}/opencode.json"
+  install -m 444 "${src}/agents/${name}.md" "${dest}/agents/${name}.md"
+
+  if [ "$(id -u)" -eq 0 ]; then
+    chown root:root "${dest}/opencode.json" "${dest}/agents/${name}.md"
+  else
+    echo "warning: ${name} permission files are owned by $(id -un) and that" >&2
+    echo "         uid also runs the lane's tools, so the lane can chmod and" >&2
+    echo "         rewrite its own permissions. Re-run as root to pin them." >&2
+  fi
 
   # A stale agent from an earlier layout would still be a reachable roster
   # entry, and reachable means its permissions apply.

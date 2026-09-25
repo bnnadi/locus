@@ -18,10 +18,19 @@ permission:
     # looks wrong, that is a finding for the orchestrator.
     "tests/**": deny
     "**/tests/**": deny
+    # Singular and language-specific layouts, so this is not tied to one
+    # project's convention: src/test/java/FooTest.java, __tests__/, spec/.
+    "test/**": deny
+    "**/test/**": deny
+    "spec/**": deny
+    "**/spec/**": deny
+    "**/__tests__/**": deny
     "**/test_*": deny
     "**/*_test.*": deny
     "**/*.test.*": deny
     "**/*.spec.*": deny
+    "**/*Test.*": deny
+    "**/*Tests.*": deny
     "**/conftest.py": deny
     # An agent must not be able to rewrite the constraints it runs under.
     "opencode.json": deny
@@ -38,20 +47,32 @@ permission:
   # Deny-first, because `ask` is useless here: the shim passes --auto, which
   # auto-approves anything not explicitly denied. Only `deny` survives it.
   #
-  # Bash is the weak seam in this model. The edit rules above gate the edit
-  # tool, not the filesystem, so any allowed command that can write is a way
-  # around them. This list is scoped to what the lane actually needs; the
-  # authoritative check on test tampering is still QA's diff audit plus branch
-  # protection on the PR.
+  # Be clear about what the edit rules above are worth on this lane. They gate
+  # the edit tool, not the filesystem. This lane writes source and runs the
+  # suite, and a writable file plus an interpreter is arbitrary execution — so
+  # `tests/**: deny` here is ADVISORY, not enforced. It raises the cost of the
+  # lazy path; it is not a boundary. `npm run` and `make` execute whatever the
+  # repository defines, which makes this explicit rather than theoretical.
+  #
+  # The authoritative checks on test tampering live outside this file: QA's
+  # diff audit, branch protection, and your review of the PR. See
+  # services/hermes/SECURITY.md.
+  # `find` is absent on purpose: `find . -maxdepth 0 -exec sh -c '…' \;` parses
+  # as the command `find`, so any `find *` rule smuggles an arbitrary payload
+  # past every other entry here. Use `rg --files` for discovery. Do not re-add
+  # it with deny rules after — -exec, -execdir, -ok, -fprintf, -delete and
+  # argument reordering give too many spellings to enumerate.
+  # `ls` is spelled with a space so it cannot prefix-match `lsof` or any
+  # attacker-placed binary named ls-something.
   bash:
     "*": deny
-    "ls*": allow
+    "ls": allow
+    "ls *": allow
     "cat *": allow
     "head *": allow
     "tail *": allow
     "grep *": allow
     "rg *": allow
-    "find *": allow
     "git status*": allow
     "git diff*": allow
     "git log*": allow

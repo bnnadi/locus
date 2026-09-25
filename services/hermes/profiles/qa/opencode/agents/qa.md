@@ -16,17 +16,30 @@ permission:
   edit: deny
 
   # Deny-first, because the shim passes --auto and only `deny` survives it.
-  # Bash writes bypass the edit tool entirely, so this list is read-and-run
-  # only: no add, no commit, no push, no redirection-friendly utilities.
+  # No git add, commit, or push.
+  #
+  # Be clear about what `edit: deny` above is worth. Bash writes bypass the
+  # edit tool entirely, and this lane still runs the test suite — which
+  # executes repository code, including conftest.py and whatever `make` or
+  # `npm run` targets the repo defines. So this lane has code execution and
+  # its read-only status is ADVISORY, not enforced. `cat`, `head`, `tail`,
+  # `grep` and `diff` are also redirection-friendly if OpenCode does not gate
+  # redirection targets, which is untested. See services/hermes/SECURITY.md.
+  #
+  # `find` is absent on purpose: `find . -maxdepth 0 -exec sh -c '…' \;` parses
+  # as the command `find`, so any `find *` rule smuggles an arbitrary payload
+  # past every other entry. It is removed because it is a gratuitous execution
+  # primitive, not because removing it makes this lane contained.
+  # `ls` is spelled with a space so it cannot prefix-match `lsof`.
   bash:
     "*": deny
-    "ls*": allow
+    "ls": allow
+    "ls *": allow
     "cat *": allow
     "head *": allow
     "tail *": allow
     "grep *": allow
     "rg *": allow
-    "find *": allow
     "wc *": allow
     "diff *": allow
     "git status*": allow

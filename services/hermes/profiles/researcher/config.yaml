@@ -1,16 +1,23 @@
 # Researcher lane. Answers a question and writes findings; changes nothing.
 #
 # This is the only lane that reads untrusted external content, which makes it
-# the team's prompt-injection surface. Two consequences shape this config:
+# the team's prompt-injection surface.
 #
-#   1. Web access lives in the OpenCode agent, not here. The shim never fetches
-#      anything itself, so a hostile page is never in this profile's context.
-#   2. The lane writes findings only. It has no git identity, cannot commit or
-#      push, and cannot touch source or tests — so a page that successfully
-#      talks the researcher into "just fixing this" has nothing to act on.
+# Web access lives in the OpenCode agent rather than here, and the OpenCode
+# agent is denied every command that can execute code, so the "findings only"
+# write restriction is a real boundary on that process.
+#
+# What this does NOT do: contain the shim. This profile has the `terminal`
+# toolset with no command allowlist, and Hermes offers no per-profile command
+# restriction to mirror the OpenCode one. Attacker-shaped text reaches the shim
+# regardless, via OpenCode's stdout and final message. So the privileged
+# process in this lane is the unrestricted one, and the containment claim
+# belongs to the OpenCode agent only. SOUL.md tells the shim not to read the
+# findings body for this reason, which reduces exposure without closing it.
 #
 # Findings come back as a declared card artifact rather than a repo commit, so
-# research output never needs a shared worktree.
+# research output does not need — and must not be given — the shared worktree
+# the spec/engineer/qa chain uses. See services/hermes/SECURITY.md.
 
 toolsets:
   - terminal

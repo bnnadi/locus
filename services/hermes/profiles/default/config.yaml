@@ -50,6 +50,17 @@ delegation:
 # board. It arrives as an MCP tool rather than the terminal toolset, so the
 # orchestrator gains a PR without gaining the ability to run commands.
 #
+# "No file tools" does NOT mean "cannot write files". An unscoped GitHub MCP
+# exposes repository content write (create/update file, push files) alongside
+# pull requests, so this profile could commit to the remote through MCP. The
+# toolset header below narrows the surface, but headers are a request the
+# server may ignore across versions — the PAT scope is the only part of this
+# you fully control, so treat it as the real boundary and keep the token at
+# contents:read + pull_requests:write on one repository, no Workflows.
+#
+# Verify the surface after install, not just the Hermes toolsets:
+#   hermes -p default tools --summary | grep -i github
+#
 # Bearer, not OAuth: the gateway has no TTY, and an OAuth server parks the
 # connection with OAuthNonInteractiveError. The same failure took out the
 # Linear, tickets, and knowledge-graph MCPs on 2026-08-21.
@@ -58,3 +69,4 @@ mcp_servers:
     url: https://api.githubcopilot.com/mcp/
     headers:
       Authorization: Bearer ${GITHUB_PAT}
+      X-MCP-Toolsets: pull_requests

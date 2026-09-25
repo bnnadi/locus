@@ -31,17 +31,29 @@ permission:
     "**/AGENTS.md": deny
 
   # Deny-first: the shim passes --auto, which auto-approves anything that would
-  # merely `ask`. Only `deny` survives it. Bash can write files regardless of
-  # the edit rules above, so this list stays narrow.
+  # merely `ask`. Only `deny` survives it.
+  #
+  # The edit rules above are ADVISORY on this lane, and unavoidably so. Writing
+  # a test and running it is this lane's entire job, and a writable file plus
+  # an interpreter is arbitrary execution — pytest additionally auto-loads
+  # conftest.py, which this lane may write. So "tests only" describes intent,
+  # not a boundary: this lane can reach implementation source if it tries.
+  # The real control is QA's diff audit plus your review of the PR. See
+  # services/hermes/SECURITY.md.
+  # `find` is absent on purpose: `find . -maxdepth 0 -exec sh -c '…' \;` parses
+  # as the command `find`, so any `find *` rule smuggles an arbitrary payload
+  # past every other entry here. Use `rg --files` for discovery.
+  # `ls` is spelled with a space so it cannot prefix-match `lsof` or any
+  # attacker-placed binary named ls-something.
   bash:
     "*": deny
-    "ls*": allow
+    "ls": allow
+    "ls *": allow
     "cat *": allow
     "head *": allow
     "tail *": allow
     "grep *": allow
     "rg *": allow
-    "find *": allow
     "git status*": allow
     "git diff*": allow
     "git log*": allow
