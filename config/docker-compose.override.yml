@@ -70,6 +70,7 @@ services:
     volumes:
       - ./services/hermes-memory-router/main.py:/app/main.py:ro
       - ./services/hermes-memory-router/identity.py:/app/identity.py:ro
+      - ./services/hermes-memory-router/redact.py:/app/redact.py:ro
     command:
       - uvicorn
       - main:app
