@@ -46,7 +46,9 @@ Give a `researcher` card its own workspace, never the shared one. It is the
 only lane taking instructions from outside the repo, and a shared tree would
 let it leave an `AGENTS.md` that the engineer lane reads and acts on.
 
-Run `install-profiles.sh` as root if you can. It pins each lane's OpenCode
-permission files read-only and root-owned; run as the Hermes user, those files
-stay writable by the same uid that runs the lane's tools, so a compromised
-lane can rewrite its own permissions durably on the volume.
+`install-profiles.sh` writes each lane's OpenCode permission files mode 444,
+and root-owned when run as root. Neither is a boundary in the stock image,
+because tool subprocesses also run as root and an owner can always chmod its
+own file — a compromised lane can still rewrite the permissions it runs under,
+durably on the volume. Treat 444 as a tripwire instead: hash those files after
+install and alert on any change. Gap 1 in [`SECURITY.md`](SECURITY.md).

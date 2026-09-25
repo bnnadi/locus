@@ -66,7 +66,7 @@ These do what the comments claim:
 
 Three gaps are structural. They are bounded, not closed.
 
-### 1. Any worker lane can read the GitHub PAT and the model keys
+### 1. No uid separation: any worker lane can read the PAT, and rewrite its own permissions
 
 `cat /opt/data/.env` matches `cat *`. So does
 `cat /opt/data/profiles/<name>/.env`, and `cat /proc/1/environ` reaches the
@@ -79,12 +79,22 @@ There is no allowlist of file-reading commands that is also a boundary around
 a file. `"cat *.env": deny` is defeated by `cat /opt/data/./.env`,
 `cd /opt/data && cat .env`, `tail -n +1`, `grep -h .`, and `/proc/*/environ`.
 
+The same root cause makes a lane's own permission files writable by that lane.
+`opencode.json` and `agents/<lane>.md` live on the volume and define every
+restriction in the "Enforced" section above. `install-profiles.sh` writes them
+mode 444 and root-owned, but the stock `hermes-agent` image runs tool
+subprocesses as root too, and an owner can always chmod its own file. A lane
+that rewrites them keeps the new permissions across the card, the session, and
+a container restart.
+
 **Proper fix:** run OpenCode tool subprocesses under a different uid than the
-one owning `/opt/data/**/.env` and the gateway process.
+one owning `/opt/data/**/.env`, the gateway process, and the permission files.
 
 **Until then:** treat every worker lane as trust-equivalent to the PAT, and
 bound the damage at the token — fine-grained, one repository,
-`contents:read` + `pull_requests:write`, no Workflows, short expiry.
+`contents:read` + `pull_requests:write`, no Workflows, short expiry. Mode 444
+still earns its keep as a tripwire: hash the permission files after install
+and alert on any change, since nothing legitimate rewrites them between runs.
 
 ### 2. The researcher has an outbound channel
 

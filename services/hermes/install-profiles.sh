@@ -123,24 +123,35 @@ install_opencode_config() {
 
   mkdir -p "${dest}/agents"
 
-  # Read-only, and root-owned where we have the privilege to do it.
+  # Read-only, and a tripwire when read-only is all we have.
   #
   # These two files ARE the lane's permission model, and they sit on the
-  # mounted volume under the same uid the tool subprocess runs as. A
-  # bash-level write from a compromised lane would rewrite them, and the
-  # change would survive the card, the session, and a container restart —
-  # every later card in that lane then runs under permissions an attacker
-  # chose. Mode 444 alone does not fix that, because the owner can always
-  # chmod its own file; the owner has to be a different uid.
+  # mounted volume. A bash-level write from a compromised lane would rewrite
+  # them, and the change would survive the card, the session, and a container
+  # restart — every later card in that lane then runs under permissions an
+  # attacker chose.
+  #
+  # Mode 444 does not prevent that. A file's owner can always chmod it back,
+  # so this is only a real control when the owner is a uid the lane's tools do
+  # not run as. The stock hermes-agent image runs everything as root, which
+  # means today it is a speed bump and an audit signal, not a boundary: if a
+  # 444 file has changed, something wrote it deliberately. Compare hashes on a
+  # schedule and treat a mismatch as a compromised lane.
   install -m 444 "${src}/opencode.json" "${dest}/opencode.json"
   install -m 444 "${src}/agents/${name}.md" "${dest}/agents/${name}.md"
 
   if [ "$(id -u)" -eq 0 ]; then
     chown root:root "${dest}/opencode.json" "${dest}/agents/${name}.md"
+    if [ -z "${HERMES_TOOL_UID:-}" ]; then
+      echo "note: ${name} permission files are root-owned, but tools also run" >&2
+      echo "      as root here, so the lane can chmod and rewrite them. This" >&2
+      echo "      is gap 1 in services/hermes/SECURITY.md. Bound it at the" >&2
+      echo "      PAT scope until the tool uid is separated." >&2
+    fi
   else
-    echo "warning: ${name} permission files are owned by $(id -un) and that" >&2
-    echo "         uid also runs the lane's tools, so the lane can chmod and" >&2
-    echo "         rewrite its own permissions. Re-run as root to pin them." >&2
+    echo "warning: ${name} permission files are owned by $(id -un), the same" >&2
+    echo "         uid that runs the lane's tools, so the lane can rewrite" >&2
+    echo "         its own permissions. See services/hermes/SECURITY.md." >&2
   fi
 
   # A stale agent from an earlier layout would still be a reachable roster
