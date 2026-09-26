@@ -63,7 +63,9 @@ if _ROUTER_DIR not in sys.path:
 import main  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from tests.unit.test_ingest_trace_skips_existing_extraction import (  # noqa: E402
+# tests/ is not a package (no __init__.py). Pytest prepends tests/unit, so
+# the sibling module is importable by filename, not as tests.unit.*.
+from test_ingest_trace_skips_existing_extraction import (  # noqa: E402
     _find_calls,
     _install_fake_session,
     _parse_return_aliases,
