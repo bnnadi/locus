@@ -7,7 +7,9 @@ No network I/O occurs at import; all network activity is isolated to
 
 from __future__ import annotations
 
+import asyncio
 import os
+import time
 from urllib.parse import urlparse, urlunparse
 
 import httpx
@@ -100,3 +102,134 @@ def fetch_jwks(authentik_url: str, issuer: str) -> dict:  # type: ignore[type-ar
     if not isinstance(jwks_document, dict) or not isinstance(jwks_document.get("keys"), list):
         raise TypeError("JWKS response is not a keys list")
     return jwks_document
+
+
+# ---------------------------------------------------------------------------
+# JWKS cache — module-level state, lock, and clock seam.
+# ---------------------------------------------------------------------------
+
+_TTL: float = 600.0
+_COOLDOWN: float = 60.0
+
+# Cached state: None timestamps mean "never set", never 0.
+_jwks_document: dict | None = None  # type: ignore[type-arg]
+_fetched_at: float | None = None
+_miss_refresh_at: float | None = None
+
+# Single asyncio.Lock created at import; tests reload the module to get a
+# fresh lock per test. The lock attaches to the running event loop on first
+# acquire (Python 3.10+ — no loop binding at creation time).
+_jwks_lock: asyncio.Lock = asyncio.Lock()
+
+
+class _Clock:
+    """Monotonic clock with a replaceable ``now()`` seam.
+
+    Tests replace the module-level ``auth._clock`` instance with a
+    ``_FakeClock`` to control time deterministically.
+    """
+
+    def now(self) -> float:
+        """Return the current monotonic time as a float."""
+        return time.monotonic()
+
+
+_clock: _Clock = _Clock()
+
+
+def signing_key(jwks: dict, kid: str) -> dict | None:  # type: ignore[type-arg]
+    """Find a usable signing key in ``jwks`` for ``kid``.
+
+    A key is accepted when it is a ``dict``, its ``kid`` matches, its
+    ``use`` field is ``"sig"`` (or absent, defaulting to ``"sig"``), and its
+    ``alg`` field is ``"RS256"`` (or absent, defaulting to ``"RS256"``).
+
+    Args:
+        jwks: JWKS document (``{"keys": [...]}``)
+        kid: Key ID to look up.
+
+    Returns:
+        The matching JWK ``dict``, or ``None`` if no usable key is found.
+    """
+    for k in jwks.get("keys", []):
+        if (
+            isinstance(k, dict)
+            and k.get("kid") == kid
+            and k.get("use", "sig") == "sig"
+            and k.get("alg", "RS256") == "RS256"
+        ):
+            return k
+    return None
+
+
+async def jwks_for_kid(kid: str, authentik_url: str, issuer: str) -> dict:  # type: ignore[type-arg]
+    """Return the cached JWKS document, refreshing via ``fetch_jwks`` when needed.
+
+    Implements a 600-second TTL cache with one global 60-second cooldown so
+    unknown kids cannot each trigger a fetch.  The asyncio lock serialises
+    all decisions so concurrent cold requests coalesce into a single fetch.
+
+    Decision order (all under ``_jwks_lock``):
+
+    1. Re-check all state after acquiring the lock (the coalescing join).
+    2. Fresh cache *and* ``signing_key`` finds ``kid``: return the document.
+    3. Fresh cache, ``kid`` absent, cooldown active: return the document.
+    4. Fresh cache, ``kid`` absent, cooldown inactive: one fetch, store,
+       arm cooldown regardless of whether the new document contains ``kid``,
+       return the document.
+    5. Cache empty or stale: one fetch, store; arm cooldown only when
+       ``signing_key`` does *not* find ``kid`` in the new document; return it.
+
+    On exception from ``fetch_jwks`` no state is updated and the exception
+    propagates — a failed fetch is never cached and never arms the cooldown.
+
+    Args:
+        kid: JWT key ID to locate.
+        authentik_url: Internal Authentik base URL.
+        issuer: OIDC issuer string.
+
+    Returns:
+        The current JWKS document (may or may not contain ``kid``).
+
+    Raises:
+        httpx.HTTPError: Propagated unchanged from ``fetch_jwks`` on failure.
+    """
+    global _jwks_document, _fetched_at, _miss_refresh_at
+
+    async with _jwks_lock:
+        now = _clock.now()
+        is_fresh = _fetched_at is not None and (now - _fetched_at) < _TTL
+
+        if is_fresh:
+            # _fetched_at is set only together with _jwks_document. An explicit
+            # raise keeps that invariant under python -O, which strips assert.
+            if _jwks_document is None:
+                raise RuntimeError("JWKS cache is fresh but has no document")
+
+            # Rule 2: fresh and kid present — no fetch.
+            if signing_key(_jwks_document, kid) is not None:
+                return _jwks_document
+
+            # Rule 3: fresh, kid absent, cooldown active — no fetch.
+            cooldown_active = (
+                _miss_refresh_at is not None and (now - _miss_refresh_at) < _COOLDOWN
+            )
+            if cooldown_active:
+                return _jwks_document
+
+            # Rule 4: fresh, kid absent, cooldown inactive — one fetch.
+            # Cooldown is armed regardless of whether the new document has kid.
+            new_doc = await asyncio.to_thread(fetch_jwks, authentik_url, issuer)
+            _jwks_document = new_doc
+            _fetched_at = now
+            _miss_refresh_at = now
+            return _jwks_document
+
+        # Rule 5: cache empty or stale — one fetch.
+        # Arm cooldown only when the new document does not contain kid.
+        new_doc = await asyncio.to_thread(fetch_jwks, authentik_url, issuer)
+        _jwks_document = new_doc
+        _fetched_at = now
+        if signing_key(new_doc, kid) is None:
+            _miss_refresh_at = now
+        return _jwks_document
