@@ -56,7 +56,6 @@ if _ROUTER_DIR not in sys.path:
 import main  # noqa: E402  (must follow env setup and sys.path insert)
 from fastapi.testclient import TestClient  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Shared fake-Neo4j harness
 # ---------------------------------------------------------------------------
