@@ -42,7 +42,11 @@ def test_ingest_trace_does_not_persist_or_hash_the_bearer_token(monkeypatch):
 
     class _FakeResult:
         def single(self):
-            return {"success_rate": 1.0}
+            return {
+                "success_rate": 1.0,
+                "title": "Stored Title X",
+                "description": "Stored description X",
+            }
 
     class _FakeSession:
         def __enter__(self):
