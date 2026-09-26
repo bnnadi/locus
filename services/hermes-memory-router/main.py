@@ -520,7 +520,8 @@ RETURN s.id AS strategy_id""",
             status_code=502, detail=f"Extraction failed ({backend}): {e}"
         )
 
-    # Step 11: miss success — existing MERGE/create path (unchanged).
+    # Step 11: miss success — MERGE/create path; RETURN the stored row so
+    # response, embed text, and Qdrant payload all reflect what Neo4j holds.
     with neo4j_driver.session() as session:
         record = session.run(
             """
@@ -545,7 +546,11 @@ RETURN s.id AS strategy_id""",
             MATCH (rt:ReasoningTrace {id: $trace_id})
             MERGE (rt)-[:DERIVES_STRATEGY]->(s)
             SET rt.extraction_status = 'extracted', rt.extraction_backend = $backend
-            RETURN s.success_rate AS success_rate
+            RETURN s.title AS title,
+                   s.description AS description,
+                   s.conditions AS conditions,
+                   s.steps AS steps,
+                   s.success_rate AS success_rate
             """,
             {
                 "id": strategy_id,
@@ -558,11 +563,23 @@ RETURN s.id AS strategy_id""",
                 "backend": backend.value,
             },
         ).single()
-        success_rate = (
-            float(record["success_rate"]) if record else (1.0 if success else 0.0)
-        )
 
-    text_to_embed = f"{extracted['title']}. {extracted['description']}"
+    title = record["title"]
+    description = record["description"]
+    conditions_raw = record.get("conditions")
+    if not conditions_raw:
+        conditions: dict = {}
+    else:
+        parsed = json.loads(conditions_raw)
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"conditions must be a JSON object, got {type(parsed).__name__}"
+            )
+        conditions = parsed
+    steps: list[str] = record.get("steps") or []
+    sr = float(record["success_rate"])
+
+    text_to_embed = f"{title}. {description}"
     vector = embedder.encode(text_to_embed).tolist()
     point_id = _strategy_point_id(strategy_id)
 
@@ -576,7 +593,7 @@ RETURN s.id AS strategy_id""",
                     "strategy_id": strategy_id,
                     "neo4j_node_id": strategy_id,
                     "trace_id": trace.trace_id,
-                    "title": extracted["title"],
+                    "title": title,
                     "task_type": trace.task_type,
                     "type": "strategy",
                     "created_at": int(time.time()),
@@ -592,11 +609,11 @@ RETURN s.id AS strategy_id""",
 
     return StrategyOut(
         strategy_id=strategy_id,
-        title=extracted["title"],
-        description=extracted["description"],
-        conditions=extracted.get("conditions", {}),
-        steps=extracted.get("steps", []),
-        success_rate=success_rate,
+        title=title,
+        description=description,
+        conditions=conditions,
+        steps=steps,
+        success_rate=sr,
     )
 
 

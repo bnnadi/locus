@@ -312,7 +312,11 @@ def test_failed_extraction_retry_still_counts_once(monkeypatch):
     run_calls = []
     router, _linked = _make_stateful_router(
         existence_result=None,
-        miss_create_result={"success_rate": 1.0},
+        miss_create_result={
+            "success_rate": 1.0,
+            "title": "Miss Title",
+            "description": "Miss description",
+        },
     )
     _install_fake_session(monkeypatch, run_calls, router)
 

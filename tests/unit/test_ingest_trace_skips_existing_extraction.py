@@ -571,7 +571,13 @@ def test_ingest_trace_strategy_key_hit_skips_backend(monkeypatch):
 def test_ingest_trace_missing_strategy_calls_backend(monkeypatch):
     run_calls = []
     router = lambda query, params: _route(  # noqa: E731
-        query, existence_result=None, miss_create_result={"success_rate": 1.0}
+        query,
+        existence_result=None,
+        miss_create_result={
+            "success_rate": 1.0,
+            "title": "Extracted Title",
+            "description": "Extracted description",
+        },
     )
     _install_fake_session(monkeypatch, run_calls, router)
 
@@ -614,7 +620,11 @@ def test_ingest_trace_existence_row_without_strategy_id_calls_backend(monkeypatc
     router = lambda query, params: _route(  # noqa: E731
         query,
         existence_result={"success_rate": 1.0},  # no strategy_id key -> not a hit
-        miss_create_result={"success_rate": 1.0},
+        miss_create_result={
+            "success_rate": 1.0,
+            "title": "Extracted Title 2",
+            "description": "d",
+        },
     )
     _install_fake_session(monkeypatch, run_calls, router)
 

@@ -969,7 +969,15 @@ def test_ingest_miss_path_upserts_with_uuid5_point_id_not_truncated_int(monkeypa
     run_calls = []
 
     def router(query, params):
-        return _route(query, existence_result=None, miss_create_result={"success_rate": 1.0})
+        return _route(
+            query,
+            existence_result=None,
+            miss_create_result={
+                "success_rate": 1.0,
+                "title": "Queue Drain Guard",
+                "description": "Check for race conditions before draining.",
+            },
+        )
 
     _install_fake_session(monkeypatch, run_calls, router)
 
