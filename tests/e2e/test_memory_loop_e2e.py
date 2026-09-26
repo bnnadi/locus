@@ -16,10 +16,20 @@ import pytest
 import requests
 
 ROUTER_URL = os.environ.get("HERMES_MEMORY_ROUTER_URL")
+ROUTER_TOKEN = os.environ.get("HERMES_MEMORY_ROUTER_TOKEN")
 
 pytestmark = pytest.mark.skipif(
     not ROUTER_URL,
     reason="HERMES_MEMORY_ROUTER_URL not set — e2e tests require a staging deployment",
+)
+
+# Every route in this loop except /health requires a bearer (GitHub issue
+# #7). This module has none, but skip with a clear reason -- and never echo
+# the token -- if a future test here is added without one configured.
+AUTH_HEADERS = {"Authorization": f"Bearer {ROUTER_TOKEN}"} if ROUTER_TOKEN else {}
+_requires_router_token = pytest.mark.skipif(
+    not ROUTER_TOKEN,
+    reason="HERMES_MEMORY_ROUTER_TOKEN not set -- skipping router-authenticated e2e tests",
 )
 
 
@@ -33,11 +43,13 @@ def _ingest(trace_id, task_type, reasoning, outcome):
             "raw_reasoning": reasoning,
             "outcome": outcome,
         },
+        headers=AUTH_HEADERS,
     )
     resp.raise_for_status()
     return resp.json()
 
 
+@_requires_router_token
 def test_full_learning_loop():
     task_type = "code_review"
     reasoning = (
@@ -60,6 +72,7 @@ def test_full_learning_loop():
             "task_type": task_type,
             "k": 1,
         },
+        headers=AUTH_HEADERS,
     )
     retrieve_resp.raise_for_status()
     results = retrieve_resp.json()["results"]
@@ -68,7 +81,7 @@ def test_full_learning_loop():
     assert trace_id_1 in results[0]["source_traces"]
 
     # 3. Confirm provenance is fully reconstructable for the original trace
-    prov_resp = requests.get(f"{ROUTER_URL}/trace/{trace_id_1}/provenance")
+    prov_resp = requests.get(f"{ROUTER_URL}/trace/{trace_id_1}/provenance", headers=AUTH_HEADERS)
     prov_resp.raise_for_status()
     prov = prov_resp.json()
     assert prov["trace"]["outcome"] == "success"
@@ -79,7 +92,7 @@ def test_full_learning_loop():
     trace_id_2 = f"trace_e2e_{uuid.uuid4().hex[:12]}"
     _ingest(trace_id_2, task_type, reasoning, "success")
 
-    prov_resp_2 = requests.get(f"{ROUTER_URL}/trace/{trace_id_2}/provenance")
+    prov_resp_2 = requests.get(f"{ROUTER_URL}/trace/{trace_id_2}/provenance", headers=AUTH_HEADERS)
     prov_resp_2.raise_for_status()
     strategies_2 = prov_resp_2.json()["strategies_derived"]
     # Same strategy_id should appear — not a duplicate with a new id

@@ -48,10 +48,12 @@ code:
   n8n generates a new key whenever its data directory is empty, which makes
   every credential saved under the old key permanently undecryptable. Using
   Postgres as the backend does not protect you — the key lives on disk.
-- **Keep `ollama` and `hermes-memory-router` off public domains.** Neither has
-  authentication, and `POST /traces` on the router spends Anthropic credit per
-  call. The Hermes dashboard is public and must have basic-auth (or OAuth/OIDC)
-  set before the first deploy; the API on 8642 stays internal.
+- **Keep `ollama` and `hermes-memory-router` off public domains.** Ollama has
+  no authentication. The router requires
+  `Authorization: Bearer <HERMES_MEMORY_ROUTER_TOKEN>` on every route except
+  `GET /health`, and `POST /traces` spends Anthropic credit per call. The
+  Hermes dashboard is public and must have basic-auth (or OAuth/OIDC) set
+  before the first deploy; the API on 8642 stays internal.
 - **Keep `authentik-worker` and `uzora` off public domains.** The authentik
   **server** is public (login / OIDC / JWKS) only after
   `AUTHENTIK_BOOTSTRAP_PASSWORD`, `AUTHENTIK_BOOTSTRAP_EMAIL`, and

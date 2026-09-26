@@ -117,14 +117,16 @@ services:
       - ANTHROPIC_API_KEY
       - OLLAMA_URL
       - HERMES_EXTRACT_ENDPOINT
-      - HERMES_TOKEN
+      - HERMES_TOKEN            # outbound bearer to HERMES_EXTRACT_ENDPOINT only
+      - HERMES_MEMORY_ROUTER_TOKEN  # inbound bearer; required; no default
       - EMBEDDING_MODEL
     dependsOn: [neo4j, qdrant]
     publicDomain: false
     notes: >-
-      POST /traces triggers a paid Anthropic call and the router has no
-      authentication, so a public domain makes it a metered endpoint open to
-      anyone. Hermes should reach it over the internal hostname.
+      Every route except GET /health requires "Authorization: Bearer
+      <HERMES_MEMORY_ROUTER_TOKEN>". POST /traces triggers a paid Anthropic
+      call, so a public domain stays off even with auth — keep the router
+      reachable only over the internal hostname from Hermes.
 
   hermes:
     source: services/hermes

@@ -55,6 +55,7 @@ os.environ.setdefault("NEO4J_URI", "bolt://localhost:7687")
 os.environ.setdefault("NEO4J_USER", "neo4j")
 os.environ.setdefault("NEO4J_PASSWORD", "ci-not-a-real-password")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
+os.environ.setdefault("HERMES_MEMORY_ROUTER_TOKEN", "router-test-token")
 
 _ROUTER_DIR = str(Path(__file__).resolve().parents[2] / "services" / "hermes-memory-router")
 if _ROUTER_DIR not in sys.path:
@@ -71,6 +72,7 @@ from test_ingest_trace_skips_existing_extraction import (  # noqa: E402
     _parse_return_aliases,
     _post,
     _route,
+    _stub_qdrant_startup,
 )
 
 # ---------------------------------------------------------------------------
@@ -224,22 +226,22 @@ def test_same_trace_id_retry_does_not_recount_or_upsert(monkeypatch):
     upsert_mock = MagicMock()
     monkeypatch.setattr(main.qdrant, "upsert", upsert_mock)
 
-    client = TestClient(main.app)
-
-    first = _post(
-        client,
-        trace_id=trace_id,
-        raw_reasoning=raw_reasoning,
-        task_type=task_type,
-        backend="claude",
-    )
-    second = _post(
-        client,
-        trace_id=trace_id,
-        raw_reasoning=raw_reasoning,
-        task_type=task_type,
-        backend="claude",
-    )
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        first = _post(
+            client,
+            trace_id=trace_id,
+            raw_reasoning=raw_reasoning,
+            task_type=task_type,
+            backend="claude",
+        )
+        second = _post(
+            client,
+            trace_id=trace_id,
+            raw_reasoning=raw_reasoning,
+            task_type=task_type,
+            backend="claude",
+        )
 
     assert first.status_code == 200
     assert second.status_code == 200
@@ -323,30 +325,30 @@ def test_failed_extraction_retry_still_counts_once(monkeypatch):
     upsert_mock = MagicMock()
     monkeypatch.setattr(main.qdrant, "upsert", upsert_mock)
 
-    client = TestClient(main.app)
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        first = _post(client, trace_id=trace_id, backend="claude")
+        assert first.status_code == 502
 
-    first = _post(client, trace_id=trace_id, backend="claude")
-    assert first.status_code == 502
+        failed_calls = _find_calls(run_calls, contains=("extraction_status = 'failed'",))
+        assert len(failed_calls) == 1
 
-    failed_calls = _find_calls(run_calls, contains=("extraction_status = 'failed'",))
-    assert len(failed_calls) == 1
+        link_merge_calls = _find_calls(run_calls, contains=(_LINK_MERGE_MARKER,))
+        assert len(link_merge_calls) == 0, (
+            "a failed extraction must not create the DERIVES_STRATEGY link -- "
+            f"got {len(link_merge_calls)} link-merge calls after the 502"
+        )
 
-    link_merge_calls = _find_calls(run_calls, contains=(_LINK_MERGE_MARKER,))
-    assert len(link_merge_calls) == 0, (
-        "a failed extraction must not create the DERIVES_STRATEGY link -- "
-        f"got {len(link_merge_calls)} link-merge calls after the 502"
-    )
+        backend_mock.side_effect = None
+        backend_mock.return_value = {
+            "title": "Recovered Title",
+            "description": "Recovered description",
+            "conditions": {},
+            "steps": ["retry-step"],
+            "success_rate": 1.0,
+        }
 
-    backend_mock.side_effect = None
-    backend_mock.return_value = {
-        "title": "Recovered Title",
-        "description": "Recovered description",
-        "conditions": {},
-        "steps": ["retry-step"],
-        "success_rate": 1.0,
-    }
-
-    second = _post(client, trace_id=trace_id, backend="claude")
+        second = _post(client, trace_id=trace_id, backend="claude")
     assert second.status_code == 200
     assert backend_mock.call_count == 2, (
         "a retry after a failed extraction must call the backend again -- "
@@ -409,22 +411,22 @@ def test_new_trace_id_against_existing_strategy_still_increments(monkeypatch):
         MagicMock(side_effect=AssertionError("should not upsert: already synced")),
     )
 
-    client = TestClient(main.app)
-
-    first = _post(
-        client,
-        trace_id="trace-shared-a",
-        raw_reasoning=raw_reasoning,
-        task_type=task_type,
-        backend="claude",
-    )
-    second = _post(
-        client,
-        trace_id="trace-shared-b",
-        raw_reasoning=raw_reasoning,
-        task_type=task_type,
-        backend="claude",
-    )
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        first = _post(
+            client,
+            trace_id="trace-shared-a",
+            raw_reasoning=raw_reasoning,
+            task_type=task_type,
+            backend="claude",
+        )
+        second = _post(
+            client,
+            trace_id="trace-shared-b",
+            raw_reasoning=raw_reasoning,
+            task_type=task_type,
+            backend="claude",
+        )
 
     assert first.status_code == 200
     assert second.status_code == 200

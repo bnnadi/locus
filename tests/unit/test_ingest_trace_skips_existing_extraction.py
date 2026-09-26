@@ -42,12 +42,18 @@ import os
 import re
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 os.environ.setdefault("NEO4J_URI", "bolt://localhost:7687")
 os.environ.setdefault("NEO4J_USER", "neo4j")
 os.environ.setdefault("NEO4J_PASSWORD", "ci-not-a-real-password")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
+# Fixed fake router token -- distinct from the redaction fixture's bearer
+# secret (BEARER_TOKEN in test_ingest_trace_redacts.py). This is the
+# credential these tests present as *their own* caller identity, not
+# something under test for leakage.
+os.environ.setdefault("HERMES_MEMORY_ROUTER_TOKEN", "router-test-token")
 
 _ROUTER_DIR = str(Path(__file__).resolve().parents[2] / "services" / "hermes-memory-router")
 if _ROUTER_DIR not in sys.path:
@@ -55,6 +61,28 @@ if _ROUTER_DIR not in sys.path:
 
 import main  # noqa: E402  (must follow env setup and sys.path insert)
 from fastapi.testclient import TestClient  # noqa: E402
+
+ROUTER_TOKEN = os.environ["HERMES_MEMORY_ROUTER_TOKEN"]
+
+
+def _stub_qdrant_startup(monkeypatch):
+    """Make ``with TestClient(main.app)`` safe to enter without a real Qdrant.
+
+    FastAPI 0.115 only runs the app's startup/lifespan hook when the
+    TestClient is entered as a context manager. Once entered, ensure_collection
+    calls ``qdrant.get_collections()`` for real unless stubbed. Reporting the
+    collection as already present is enough for these tests (which do not
+    exercise ensure_collection's create path) -- create_collection and
+    create_payload_index are also stubbed as a no-op safety net in case a
+    future implementation calls them unconditionally.
+    """
+    monkeypatch.setattr(
+        main.qdrant,
+        "get_collections",
+        lambda: SimpleNamespace(collections=[SimpleNamespace(name=main.COLLECTION)]),
+    )
+    monkeypatch.setattr(main.qdrant, "create_collection", MagicMock())
+    monkeypatch.setattr(main.qdrant, "create_payload_index", MagicMock())
 
 # ---------------------------------------------------------------------------
 # Shared fake-Neo4j harness
@@ -263,7 +291,11 @@ def _post(client, **overrides):
         "backend": "claude",
     }
     body.update(overrides)
-    return client.post("/traces", json=body)
+    return client.post(
+        "/traces",
+        json=body,
+        headers={"Authorization": f"Bearer {ROUTER_TOKEN}"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -316,15 +348,16 @@ def test_ingest_trace_existing_strategy_skips_backend(monkeypatch):
     upsert_mock = MagicMock()
     monkeypatch.setattr(main.qdrant, "upsert", upsert_mock)
 
-    client = TestClient(main.app)
-    response = _post(
-        client,
-        trace_id=trace_id,
-        raw_reasoning=raw_reasoning,
-        task_type=task_type,
-        outcome="failure",
-        backend="ollama",
-    )
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        response = _post(
+            client,
+            trace_id=trace_id,
+            raw_reasoning=raw_reasoning,
+            task_type=task_type,
+            outcome="failure",
+            backend="ollama",
+        )
 
     assert response.status_code == 200
 
@@ -504,14 +537,15 @@ def test_ingest_trace_strategy_key_hit_skips_backend(monkeypatch):
     upsert_mock = MagicMock()
     monkeypatch.setattr(main.qdrant, "upsert", upsert_mock)
 
-    client = TestClient(main.app)
-    response = _post(
-        client,
-        raw_reasoning=raw_reasoning,
-        task_type=task_type,
-        strategy_key=strategy_key,
-        backend="claude",
-    )
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        response = _post(
+            client,
+            raw_reasoning=raw_reasoning,
+            task_type=task_type,
+            strategy_key=strategy_key,
+            backend="claude",
+        )
 
     assert response.status_code == 200
     assert backend_mock.called is False
@@ -557,8 +591,9 @@ def test_ingest_trace_missing_strategy_calls_backend(monkeypatch):
     upsert_mock = MagicMock()
     monkeypatch.setattr(main.qdrant, "upsert", upsert_mock)
 
-    client = TestClient(main.app)
-    response = _post(client, backend="claude")
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        response = _post(client, backend="claude")
 
     assert response.status_code == 200
     assert response.json()["title"] == "Extracted Title"
@@ -598,8 +633,9 @@ def test_ingest_trace_existence_row_without_strategy_id_calls_backend(monkeypatc
     monkeypatch.setattr(main.embedder, "encode", MagicMock(return_value=fake_vector))
     monkeypatch.setattr(main.qdrant, "upsert", MagicMock())
 
-    client = TestClient(main.app)
-    response = _post(client, backend="claude")
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        response = _post(client, backend="claude")
 
     assert response.status_code == 200
     assert backend_mock.call_count == 1
@@ -658,8 +694,9 @@ def test_ingest_trace_unsynced_strategy_reembeds_without_backend(monkeypatch):
     upsert_mock = MagicMock()
     monkeypatch.setattr(main.qdrant, "upsert", upsert_mock)
 
-    client = TestClient(main.app)
-    response = _post(client, raw_reasoning=raw_reasoning, task_type=task_type, backend="claude")
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        response = _post(client, raw_reasoning=raw_reasoning, task_type=task_type, backend="claude")
 
     assert response.status_code == 200
     assert backend_mock.called is False
@@ -728,8 +765,9 @@ def test_ingest_trace_extraction_failure_records_backend(monkeypatch):
     monkeypatch.setattr(main.embedder, "encode", MagicMock(side_effect=AssertionError("no")))
     monkeypatch.setattr(main.qdrant, "upsert", MagicMock(side_effect=AssertionError("no")))
 
-    client = TestClient(main.app)
-    response = _post(client, backend="ollama")
+    _stub_qdrant_startup(monkeypatch)
+    with TestClient(main.app) as client:
+        response = _post(client, backend="ollama")
 
     assert response.status_code == 502
     assert backend_mock.call_count == 1
