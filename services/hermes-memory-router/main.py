@@ -246,6 +246,46 @@ RETURN s.id AS strategy_id, s.embedding_synced AS embedding_synced""",
     # Step 5: hit predicate.
     existing_id = _strategy_id_from_existence_row(existence_record)
 
+    # Step 5.5: linked-trace read — check whether *this specific trace_id*
+    # already has a DERIVES_STRATEGY edge (idempotent retry guard).
+    # Own session, .single(), no MERGE.  Must run before both the counter
+    # bump and the extraction backend call so that a retry of an already-
+    # linked trace is short-circuited with no side effects.
+    with neo4j_driver.session() as session:
+        linked_record = session.run(
+            """MATCH (rt:ReasoningTrace {id: $trace_id})-[:DERIVES_STRATEGY]->(s:StrategyItem)
+RETURN s.id AS strategy_id,
+       s.title AS title,
+       s.description AS description,
+       s.conditions AS conditions,
+       s.steps AS steps,
+       s.success_rate AS success_rate""",
+            {"trace_id": trace.trace_id},
+        ).single()
+
+    linked_id = _strategy_id_from_existence_row(linked_record)
+    if linked_id is not None:
+        # Already linked: return stored fields directly. No counter SET,
+        # no backend call, no embedder.encode, no qdrant.upsert.
+        conditions_raw = linked_record.get("conditions") if linked_record is not None else None
+        if not conditions_raw:
+            conditions_linked: dict = {}
+        else:
+            parsed_linked = json.loads(conditions_raw)
+            if not isinstance(parsed_linked, dict):
+                raise ValueError(
+                    f"conditions must be a JSON object, got {type(parsed_linked).__name__}"
+                )
+            conditions_linked = parsed_linked
+        return StrategyOut(
+            strategy_id=linked_id,
+            title=linked_record["title"],
+            description=linked_record["description"],
+            conditions=conditions_linked,
+            steps=linked_record.get("steps") or [],
+            success_rate=float(linked_record["success_rate"]),
+        )
+
     if existing_id is not None:
         # Step 6: reuse update — MATCH not MERGE, bump counters, link trace.
         with neo4j_driver.session() as session:
