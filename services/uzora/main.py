@@ -64,22 +64,10 @@ async def whoami(request: Request) -> JSONResponse:
 
     # --- 4. Fetch JWKS and verify the token ---------------------------------
     try:
-        jwks: dict[str, Any] = auth.fetch_jwks(auth.AUTHENTIK_URL, auth.AUTHENTIK_ISSUER)  # type: ignore[arg-type]
-        keys = jwks.get("keys")
-        if not isinstance(keys, list):
-            return JSONResponse({"detail": "Token verification failed"}, status_code=401)
-
-        key_data: dict[str, Any] | None = next(
-            (
-                k
-                for k in keys
-                if isinstance(k, dict)
-                and k.get("kid") == kid
-                and k.get("use", "sig") == "sig"
-                and k.get("alg", "RS256") == "RS256"
-            ),
-            None,
+        jwks: dict[str, Any] = await auth.jwks_for_kid(  # type: ignore[arg-type]
+            kid, auth.AUTHENTIK_URL, auth.AUTHENTIK_ISSUER
         )
+        key_data: dict[str, Any] | None = auth.signing_key(jwks, kid)
         if key_data is None:
             return JSONResponse({"detail": "Token verification failed"}, status_code=401)
 
