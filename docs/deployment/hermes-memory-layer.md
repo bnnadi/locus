@@ -64,10 +64,21 @@ Summary:
 Hermes calls the router over plain HTTP (not MCP — see
 `docs/runbooks/hermes-memory-runbook.md` for the rationale):
 
+- `GET /health` — liveness check; no auth required
 - `POST /traces` — post-task, ingest a reasoning trace + trigger extraction
 - `POST /retrieve` — pre-task, fetch the top-k (default k=1) relevant
   strategy with full Neo4j provenance
 - `GET /trace/{id}/provenance` — on-demand full audit trail for one trace
+- `POST /strategies/{id}/quarantine` — flag a strategy as quarantined; stops
+  retrieval and new reinforcement without deleting Neo4j history
+- `DELETE /strategies/{id}` — hard-delete a strategy and its Qdrant point
+
+Every route except `GET /health` requires `Authorization: Bearer
+<HERMES_MEMORY_ROUTER_TOKEN>`. The token is set in the service's env vars and
+read once at startup. A `401` means the header is missing or wrong; the
+router never returns `403` for auth failures. A `409 strategy quarantined`
+from `POST /traces` means the strategy is blocked; do not re-POST the same
+trace to unstick it.
 
 ## Open questions (resolve before broad rollout)
 

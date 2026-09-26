@@ -29,6 +29,7 @@ export AUTHENTIK_DB_PASSWORD="ci-not-a-real-password"
 export AUTHENTIK_BOOTSTRAP_PASSWORD="ci-not-a-real-bootstrap"
 export AUTHENTIK_BOOTSTRAP_EMAIL="ci@localhost"
 export AUTHENTIK_BOOTSTRAP_TOKEN="ci-not-a-real-bootstrap-token"
+export HERMES_MEMORY_ROUTER_TOKEN="ci-not-a-real-router-token"
 
 fail=0
 DEPLOY="$ROOT/scripts/deploy.sh"

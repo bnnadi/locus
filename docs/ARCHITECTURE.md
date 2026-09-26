@@ -22,8 +22,10 @@ infrastructure, not an application — nothing here owns product logic.
 `n8n`, the Hermes dashboard, and the authentik login are the public surfaces.
 Hermes on a public domain requires a dashboard auth provider (basic-auth,
 OAuth, or OIDC) — the image fails closed without one. Everything else is
-internal: `ollama` and `hermes-memory-router` ship without authentication,
-and the router spends money per request. The Hermes OpenAI API (8642)
+internal: `ollama` stays unauthenticated, while `hermes-memory-router`
+requires `Authorization: Bearer <HERMES_MEMORY_ROUTER_TOKEN>` on every route
+except `GET /health`; the router still stays off a public domain because
+`POST /traces` spends money per request. The Hermes OpenAI API (8642)
 stays internal. `uzora` stays internal: it is a shared token gate, not an
 MCP hop. Locus private DNS cannot reach MCP servers in other Railway
 projects. `/mcp` on Uzora is unimplemented (honest 501).

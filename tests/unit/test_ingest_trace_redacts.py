@@ -10,12 +10,17 @@ configured for this test module.
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 os.environ.setdefault("NEO4J_URI", "bolt://localhost:7687")
 os.environ.setdefault("NEO4J_USER", "neo4j")
 os.environ.setdefault("NEO4J_PASSWORD", "ci-not-a-real-password")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
+# Fixed fake router token this test presents as ITS OWN caller identity --
+# not the same secret as BEARER_TOKEN below, which is the redaction
+# fixture's planted secret under test for leakage, not a real credential.
+os.environ.setdefault("HERMES_MEMORY_ROUTER_TOKEN", "router-test-token")
 
 _ROUTER_DIR = str(Path(__file__).resolve().parents[2] / "services" / "hermes-memory-router")
 if _ROUTER_DIR not in sys.path:
@@ -24,6 +29,7 @@ if _ROUTER_DIR not in sys.path:
 import main  # noqa: E402  (must follow env setup and sys.path insert)
 from fastapi.testclient import TestClient  # noqa: E402
 
+ROUTER_TOKEN = os.environ["HERMES_MEMORY_ROUTER_TOKEN"]
 BEARER_TOKEN = "AbcdEfghIjklMnop0123"  # 20 chars, class [A-Za-z0-9._~+/-]
 
 
@@ -86,18 +92,31 @@ def test_ingest_trace_does_not_persist_or_hash_the_bearer_token(monkeypatch):
 
     monkeypatch.setattr(main, "strategy_id_for", _recording_strategy_id_for)
 
-    client = TestClient(main.app)
-    response = client.post(
-        "/traces",
-        json={
-            "trace_id": "trace-1",
-            "task_id": "task-1",
-            "task_type": "code_review",
-            "raw_reasoning": raw_reasoning,
-            "outcome": "success",
-            "backend": "claude",
-        },
+    # Stub qdrant startup calls before entering the client: FastAPI 0.115
+    # only runs the app's startup/lifespan hook inside `with
+    # TestClient(app)`, and ensure_collection calls qdrant.get_collections()
+    # for real unless stubbed.
+    monkeypatch.setattr(
+        main.qdrant,
+        "get_collections",
+        lambda: SimpleNamespace(collections=[SimpleNamespace(name=main.COLLECTION)]),
     )
+    monkeypatch.setattr(main.qdrant, "create_collection", MagicMock())
+    monkeypatch.setattr(main.qdrant, "create_payload_index", MagicMock())
+
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/traces",
+            json={
+                "trace_id": "trace-1",
+                "task_id": "task-1",
+                "task_type": "code_review",
+                "raw_reasoning": raw_reasoning,
+                "outcome": "success",
+                "backend": "claude",
+            },
+            headers={"Authorization": f"Bearer {ROUTER_TOKEN}"},
+        )
 
     assert response.status_code == 200
 
