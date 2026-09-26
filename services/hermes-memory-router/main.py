@@ -180,12 +180,30 @@ BACKENDS = {
 # --- Endpoints ---
 
 
+def _strategy_id_from_existence_row(record: dict | None) -> str | None:
+    """Return the strategy_id string from an existence-read row, or None.
+
+    Returns None for a missing row, a missing key, or a non-string/blank value.
+    This prevents the row shape returned by the redacts-test fake (which always
+    hands back ``{"success_rate": 1.0}`` regardless of the query) from being
+    mis-classified as a hit.
+    """
+    if record is None:
+        return None
+    strategy_id = record.get("strategy_id")
+    if isinstance(strategy_id, str) and strategy_id:
+        return strategy_id
+    return None
+
+
 @app.post("/traces", response_model=StrategyOut)
-def ingest_trace(trace: ReasoningTraceIn):
+def ingest_trace(trace: ReasoningTraceIn) -> StrategyOut:
     """Store trace in Neo4j (immutable), extract + store a strategy."""
+    # Step 1: redact + resolve backend first.
     trace = trace.model_copy(update={"raw_reasoning": redact_reasoning(trace.raw_reasoning)})
     backend = trace.backend or DEFAULT_BACKEND
 
+    # Step 2: unconditional ReasoningTrace MERGE (do NOT call .single()).
     with neo4j_driver.session() as session:
         session.run(
             """
@@ -209,6 +227,111 @@ def ingest_trace(trace: ReasoningTraceIn):
             },
         )
 
+    # Step 3: compute identity and outcome from the (already-redacted) reasoning.
+    strategy_id = strategy_id_for(
+        task_type=trace.task_type,
+        raw_reasoning=trace.raw_reasoning,
+        strategy_key=trace.strategy_key,
+    )
+    success = trace.outcome == "success"
+
+    # Step 4: existence read — own session, MATCH not MERGE, call .single().
+    with neo4j_driver.session() as session:
+        existence_record = session.run(
+            """MATCH (s:StrategyItem {id: $id})
+RETURN s.id AS strategy_id, s.embedding_synced AS embedding_synced""",
+            {"id": strategy_id},
+        ).single()
+
+    # Step 5: hit predicate.
+    existing_id = _strategy_id_from_existence_row(existence_record)
+
+    if existing_id is not None:
+        # Step 6: reuse update — MATCH not MERGE, bump counters, link trace.
+        with neo4j_driver.session() as session:
+            reuse_record = session.run(
+                """MATCH (s:StrategyItem {id: $id})
+SET s.success_count = s.success_count + CASE WHEN $success THEN 1 ELSE 0 END,
+    s.failure_count = s.failure_count + CASE WHEN $success THEN 0 ELSE 1 END,
+    s.last_validated = datetime()
+WITH s
+SET s.success_rate = toFloat(s.success_count) / (s.success_count + s.failure_count)
+WITH s
+MATCH (rt {id: $trace_id})
+MERGE (rt)-[:DERIVES_STRATEGY]->(s)
+SET rt.extraction_status = CASE WHEN rt.extraction_status = 'pending' THEN 'reused' ELSE rt.extraction_status END
+RETURN s.title AS title,
+       s.description AS description,
+       s.conditions AS conditions,
+       s.steps AS steps,
+       s.success_rate AS success_rate,
+       s.embedding_synced AS embedding_synced""",
+                {"id": existing_id, "success": success, "trace_id": trace.trace_id},
+            ).single()
+
+        # Step 7: if reuse row is absent, fall through to the miss/extract path.
+        if reuse_record is not None:
+            # Step 8: build StrategyOut from stored fields.
+            conditions_raw = reuse_record.get("conditions")
+            if not conditions_raw:
+                conditions: dict = {}
+            else:
+                parsed = json.loads(conditions_raw)
+                if not isinstance(parsed, dict):
+                    raise ValueError(
+                        f"conditions must be a JSON object, got {type(parsed).__name__}"
+                    )
+                conditions = parsed
+
+            steps: list[str] = reuse_record.get("steps") or []
+            title: str = reuse_record["title"]
+            description: str = reuse_record["description"]
+            sr = float(reuse_record["success_rate"])
+
+            # Step 9: embedding heal using the EXISTENCE row's embedding_synced.
+            embedding_synced = (
+                existence_record.get("embedding_synced")
+                if existence_record is not None
+                else None
+            )
+            if embedding_synced is not True:
+                text_to_embed = f"{title}. {description}"
+                vector = embedder.encode(text_to_embed).tolist()
+                point_id = int(hashlib.sha256(strategy_id.encode()).hexdigest()[:8], 16)
+                qdrant.upsert(
+                    collection_name=COLLECTION,
+                    points=[
+                        PointStruct(
+                            id=point_id,
+                            vector=vector,
+                            payload={
+                                "strategy_id": strategy_id,
+                                "neo4j_node_id": strategy_id,
+                                "trace_id": trace.trace_id,
+                                "title": title,
+                                "task_type": trace.task_type,
+                                "type": "strategy",
+                                "created_at": int(time.time()),
+                            },
+                        )
+                    ],
+                )
+                with neo4j_driver.session() as session:
+                    session.run(
+                        "MATCH (s:StrategyItem {id: $id}) SET s.embedding_synced = true, s.qdrant_point_id = $pid",
+                        {"id": strategy_id, "pid": point_id},
+                    )
+
+            return StrategyOut(
+                strategy_id=strategy_id,
+                title=title,
+                description=description,
+                conditions=conditions,
+                steps=steps,
+                success_rate=sr,
+            )
+
+    # Step 10: miss path — call extraction backend (broad except preserved).
     try:
         extracted = BACKENDS[backend](trace)
     # Deliberately broad: this is the API boundary for third-party extraction
@@ -219,20 +342,14 @@ def ingest_trace(trace: ReasoningTraceIn):
     except Exception as e:  # noqa: BLE001
         with neo4j_driver.session() as session:
             session.run(
-                "MATCH (rt:ReasoningTrace {id: $id}) SET rt.extraction_status = 'failed'",
-                {"id": trace.trace_id},
+                "MATCH (rt:ReasoningTrace {id: $id}) SET rt.extraction_status = 'failed', rt.extraction_backend = $backend",
+                {"id": trace.trace_id, "backend": backend.value},
             )
         raise HTTPException(
             status_code=502, detail=f"Extraction failed ({backend}): {e}"
         )
 
-    strategy_id = strategy_id_for(
-        task_type=trace.task_type,
-        raw_reasoning=trace.raw_reasoning,
-        strategy_key=trace.strategy_key,
-    )
-    success = trace.outcome == "success"
-
+    # Step 11: miss success — existing MERGE/create path (unchanged).
     with neo4j_driver.session() as session:
         record = session.run(
             """
