@@ -82,6 +82,7 @@ jobs:
           AUTHENTIK_BOOTSTRAP_PASSWORD: ci-not-a-real-bootstrap
           AUTHENTIK_BOOTSTRAP_EMAIL: ci@localhost
           AUTHENTIK_BOOTSTRAP_TOKEN: ci-not-a-real-bootstrap-token
+          HERMES_MEMORY_ROUTER_TOKEN: ci-not-a-real-router-token
         run: |
           docker compose \
             -f docker-compose.yml \
@@ -99,6 +100,7 @@ jobs:
           AUTHENTIK_BOOTSTRAP_PASSWORD: ci-not-a-real-bootstrap
           AUTHENTIK_BOOTSTRAP_EMAIL: ci@localhost
           AUTHENTIK_BOOTSTRAP_TOKEN: ci-not-a-real-bootstrap-token
+          HERMES_MEMORY_ROUTER_TOKEN: ci-not-a-real-router-token
         run: docker compose -f docker-compose.yml config --quiet
 
       - name: authentik nests into server/worker Railway roots
