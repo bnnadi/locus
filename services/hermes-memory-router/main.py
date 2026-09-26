@@ -127,10 +127,10 @@ Reply with JSON only, no preamble:
     resp = client.messages.create(
         model="claude-sonnet-5",
         max_tokens=500,
-        temperature=0,
+        thinking={"type": "disabled"},
         messages=[{"role": "user", "content": prompt}],
     )
-    text = resp.content[0].text
+    text = "".join(block.text for block in resp.content if block.type == "text")
     start, end = text.find("{"), text.rfind("}") + 1
     return json.loads(text[start:end])
 
