@@ -87,6 +87,7 @@ services:
       - N8N_PORT                # 5678; must equal PORT and the target port
       - PORT                    # 5678; Railway probes this. Pin it; do not leave the injected default if it is not 5678
       - GENERIC_TIMEZONE
+      - HERMES_URL              # http://hermes.railway.internal:8642 — not RAILWAY_SERVICE_HERMES_URL (dashboard)
     dependsOn: [postgres]
     publicDomain: true
     notes: >-
