@@ -88,6 +88,7 @@ services:
       - PORT                    # 5678; Railway probes this. Pin it; do not leave the injected default if it is not 5678
       - GENERIC_TIMEZONE
       - HERMES_URL              # http://hermes.railway.internal:8642 — not RAILWAY_SERVICE_HERMES_URL (dashboard)
+      - OLLAMA_URL              # http://ollama.railway.internal:8080 — not 11434
     dependsOn: [postgres]
     publicDomain: true
     notes: >-
@@ -100,7 +101,10 @@ services:
       Railway probes PORT, not N8N_PORT. The image copies PORT onto
       N8N_PORT only when N8N_PORT is unset, and refuses to start if
       they differ. Set PORT=5678 so it matches N8N_PORT and the
-      dashboard target port. healthcheckTimeout is 600s so first-boot
+      dashboard target port. HERMES_URL and OLLAMA_URL are read by the
+      Locus chat nodes when the credential base URL is empty; use the
+      railway.internal hosts, not 127.0.0.1 and not port 11434.
+      healthcheckTimeout is 600s so first-boot
       /healthz/readiness 503s (migrations + fullyReady) do not exhaust
       the window. Do not switch the probe to /healthz.
 

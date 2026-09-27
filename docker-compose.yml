@@ -119,6 +119,9 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY}
       N8N_PORT: 5678
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+      # In-network hosts. Do not inherit the host-side HERMES_URL (127.0.0.1).
+      HERMES_URL: http://hermes:8642
+      OLLAMA_URL: http://ollama:8080
     volumes:
       - n8n_data:/home/node/.n8n
     ports:
