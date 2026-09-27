@@ -6,6 +6,10 @@
 *.env
 !*.env.example
 
+# Node
+node_modules/
+services/n8n/nodes/dist/
+
 # Python
 __pycache__/
 *.py[cod]

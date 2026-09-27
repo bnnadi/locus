@@ -1,0 +1,35 @@
+{
+  "name": "n8n-nodes-locus",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Private n8n node package for Locus (Hermes, Ollama, Hugging Face, Authentik OAuth2).",
+  "scripts": {
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "build": "tsc -p tsconfig.json && node scripts/copy-codex.js"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "aiNodeSdkVersion": 1,
+    "credentials": [
+      "dist/credentials/LocusAuthentikOAuth2Api.credentials.js",
+      "dist/credentials/LocusHermesApi.credentials.js",
+      "dist/credentials/LocusOllamaApi.credentials.js",
+      "dist/credentials/LocusHuggingFaceApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/LocusHermes/LocusHermes.node.js",
+      "dist/nodes/LmChatLocusOllama/LmChatLocusOllama.node.js",
+      "dist/nodes/LmChatLocusHuggingFace/LmChatLocusHuggingFace.node.js"
+    ]
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "devDependencies": {
+    "@n8n/ai-node-sdk": "0.24.4",
+    "@types/node": "24.19.0",
+    "n8n-workflow": "2.34.3",
+    "typescript": "7.0.2"
+  }
+}

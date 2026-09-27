@@ -1,0 +1,8 @@
+{
+  "categories": ["AI"],
+  "subcategories": { "AI": ["Language Models"] },
+  "resources": {
+    "primaryDocumentation": [],
+    "credentialDocumentation": []
+  }
+}

@@ -54,6 +54,9 @@ jobs:
       - name: n8n aligns PORT and N8N_PORT
         run: bash tests/unit/test_n8n_port_align.sh
 
+      - name: n8n node package pins exact versions
+        run: bash tests/unit/test_n8n_nodes_pins.sh
+
       - name: hermes pins the opencode CLI
         run: bash tests/unit/test_hermes_opencode_pin.sh
 
@@ -109,8 +112,28 @@ jobs:
       - name: n8n entrypoint chowns a root-owned volume
         run: bash tests/unit/test_n8n_volume_permissions.sh
 
+      - name: n8n loads Locus nodes and the off switch
+        run: bash tests/unit/test_n8n_custom_nodes_load.sh
+
       - name: n8n PORT alignment survives su node
         run: bash tests/unit/test_n8n_port_align_su.sh
+
+  n8n-nodes:
+    name: n8n node package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+
+      - name: Test and build
+        working-directory: services/n8n/nodes
+        run: |
+          npm ci
+          npm test
+          npm run build
 
   python:
     name: Router lint and build
